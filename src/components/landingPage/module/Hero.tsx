@@ -35,9 +35,7 @@ export default function HeroSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full items-center">
           {/* Left Side - Text Content */}
           <div className="text-white space-y-6">
-            <h1 className="font-sans font-bold text-[#ffffff] text-[58px]">
-              Coming Soon
-            </h1>
+
             <p className="font-sans font-bold text-[#ffffff] text-[48px]">
               Find the Perfect Spare Part for Your Vehicle - Fast and Easy
             </p>
