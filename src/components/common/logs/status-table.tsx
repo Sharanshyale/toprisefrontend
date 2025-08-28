@@ -97,7 +97,7 @@ export default function statusTable() {
   const [searchQuery, setSearchQuery] = useState(""); // Actual search query for filtering
   const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState<any[]>([]);
+  const [uploadMessage, setUploadMessage] = useState<any>(null);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(
     null
   );
@@ -120,7 +120,7 @@ export default function statusTable() {
         if (response) {
           console.log("Logs uploaded successfully:", response.data);
           setUploadMessage(response.data);
-          setLogs(response.data);
+          setLogs(response.data.products || []);
         } else {
           console.error("Failed to upload logs");
         }
@@ -147,7 +147,9 @@ export default function statusTable() {
   };
   // Use uploadMessage if it has data, otherwise fallback to tableData
   const rows =
-    uploadMessage && uploadMessage.length > 0 ? uploadMessage : tableData;
+    uploadMessage && uploadMessage.products && uploadMessage.products.length > 0 
+      ? uploadMessage.products 
+      : tableData;
   const rowToShow = logs ? (Array.isArray(logs) ? logs : []) : rows;
 
   // Calculate totals
