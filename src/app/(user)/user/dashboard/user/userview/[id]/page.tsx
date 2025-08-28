@@ -2,13 +2,15 @@ import Viewuser from '@/components/user-dashboard/user-mangement/module/viewuser
 import React from 'react'
 
 interface PageProps {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
-export default function UserViewPage({ params }: PageProps) {
+export default async function UserViewPage({ params }: PageProps) {
+  const { id } = await params;
+  
   return (
     <div>
-        <Viewuser id={params.id} />
+        <Viewuser id={id} />
     </div>
   )
 }
