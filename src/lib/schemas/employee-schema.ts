@@ -1,5 +1,4 @@
 // lib/schemas/employee-schema.ts
-import { current } from "@reduxjs/toolkit";
 import { z } from "zod";
 
 export const employeeSchema = z.object({
@@ -10,8 +9,6 @@ export const employeeSchema = z.object({
   role: z.string().min(1, "Role is required"),
   employeeId: z.string().min(1, "Employee ID is required"),
   fullName: z.string().min(1, "Full Name is required"),
-  department: z.string().min(1, "Department is required"),
-  designation: z.string().min(1, "Designation is required"),
   profile_image: z.instanceof(File).optional(),
   roleDescription: z.string().optional(),
   accessLevel: z.string().optional(),

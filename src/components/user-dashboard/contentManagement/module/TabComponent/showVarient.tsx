@@ -7,46 +7,53 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import {  getvarient } from "@/service/product-Service";
+import { getvarient } from "@/service/product-Service";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
-export default function ShowVariant({ searchQuery }: { searchQuery: string }) {
+export default function ShowVarient({ searchQuery }: { searchQuery: string }) {
     const [variants, setVariants] = useState<any[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [loading, setLoading] = useState(false);
     const itemPerPage = 10;
 
-    // Filter variants by searchQuery
+    // Filter variants by searchQuery with safe array operations
     const filteredVariants = React.useMemo(() => {
+        if (!variants || !Array.isArray(variants)) return [];
         if (!searchQuery || !searchQuery.trim()) return variants;
+        
         const q = searchQuery.trim().toLowerCase();
         return variants.filter((item) =>
-            (item.variant_name?.toLowerCase().includes(q) ||
-                item.model?.model_name?.toLowerCase().includes(q) ||
-                item.variant_status?.toLowerCase().includes(q))
+            (item?.variant_name?.toLowerCase().includes(q) ||
+                item?.model?.model_name?.toLowerCase().includes(q) ||
+                item?.variant_status?.toLowerCase().includes(q))
         );
     }, [variants, searchQuery]);
 
-    const totalPages = Math.ceil(filteredVariants.length / itemPerPage);
-    const paginatedData = filteredVariants.slice(
-        (currentPage - 1) * itemPerPage,
-        currentPage * itemPerPage
-    );
+    // Safe pagination calculations
+    const totalPages = Math.ceil((filteredVariants?.length || 0) / itemPerPage);
+    const paginatedData = React.useMemo(() => {
+        if (!filteredVariants || !Array.isArray(filteredVariants)) return [];
+        return filteredVariants.slice(
+            (currentPage - 1) * itemPerPage,
+            currentPage * itemPerPage
+        );
+    }, [filteredVariants, currentPage, itemPerPage]);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
                 const response = await getvarient();
-                setLoading(false);
                 if (!response || !response.data) {
                     console.error("No data found in response");
+                    setVariants([]);
                     return;
                 }
-                setVariants(response.data);
+                setVariants(Array.isArray(response.data) ? response.data : []);
             } catch (err: any) {
                 console.error("Error fetching data:", err);
+                setVariants([]);
+            } finally {
                 setLoading(false);
             }
         };
@@ -64,6 +71,10 @@ export default function ShowVariant({ searchQuery }: { searchQuery: string }) {
         );
     }
 
+    // Safe check for data existence
+    const hasData = paginatedData && Array.isArray(paginatedData) && paginatedData.length > 0;
+    const totalItems = variants && Array.isArray(variants) ? variants.length : 0;
+
     return (
         <div className="p-6">
             <h2 className="text-xl font-semibold mb-4">Variants</h2>
@@ -76,22 +87,22 @@ export default function ShowVariant({ searchQuery }: { searchQuery: string }) {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {paginatedData.length > 0 ? (
+                    {hasData ? (
                         paginatedData.map((item) => (
-                            <TableRow key={item._id}>
-                                <TableCell>{item.variant_name || "No Name"}</TableCell>
-                                <TableCell>{item.model?.model_name || "No Model"}</TableCell>
+                            <TableRow key={item?._id || Math.random()}>
+                                <TableCell>{item?.variant_name || "No Name"}</TableCell>
+                                <TableCell>{item?.model?.model_name || "No Model"}</TableCell>
                                 <TableCell>
                                     <span
                                         className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                            item.variant_status === "active"
+                                            item?.variant_status === "active"
                                                 ? "bg-green-100 text-green-800"
-                                                : item.variant_status === "inactive"
+                                                : item?.variant_status === "inactive"
                                                     ? "bg-orange-100 text-orange-800"
                                                     : "bg-gray-200 text-gray-700"
                                         }`}
                                     >
-                                        {item.variant_status || "No Status"}
+                                        {item?.variant_status || "No Status"}
                                     </span>
                                 </TableCell>
                             </TableRow>
@@ -106,15 +117,15 @@ export default function ShowVariant({ searchQuery }: { searchQuery: string }) {
                 </TableBody>
             </Table>
 
-            {/* Pagination - moved outside of table */}
-            {variants.length > 0 && totalPages > 1 && (
+            {/* Pagination - with safe checks */}
+            {totalItems > 0 && totalPages > 1 && (
                 <div className="flex flex-col space-y-4 sm:flex-row sm:justify-between sm:items-center sm:space-y-0 mt-8">
                     {/* Left: Showing X-Y of Z variants */}
                     <div className="text-sm text-gray-600 text-center sm:text-left">
                         {`Showing ${(currentPage - 1) * itemPerPage + 1}-${Math.min(
                             currentPage * itemPerPage,
-                            variants.length
-                        )} of ${variants.length} variants`}
+                            totalItems
+                        )} of ${totalItems} variants`}
                     </div>
                     {/* Pagination Controls */}
                     <div className="flex justify-center sm:justify-end">

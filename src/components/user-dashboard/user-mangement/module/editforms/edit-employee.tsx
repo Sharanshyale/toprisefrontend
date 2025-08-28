@@ -40,7 +40,6 @@ export default function EditEmployee() {
   })
 
   const onSubmit = (data: EmployeeFormValues) => {
-    console.log("Updating employee:", data)
     // Handle form submission for update, e.g., send to API
   }
 

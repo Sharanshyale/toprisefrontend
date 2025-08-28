@@ -18,6 +18,7 @@ import {  SlaType } from "@/types/sla-types"
 import { getAllEmployees } from "@/service/employeeServices"
 import { Employee } from "@/types/employee-types"
 import { set } from "zod"
+import { useAppSelector } from "@/store/hooks"
 
 export default function EditDealer() {
   const { showToast } = useGlobalToast();
@@ -31,6 +32,8 @@ export default function EditDealer() {
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [submitLoading, setSubmitLoading] = useState(false)
   const [slaTypes, setSlaTypes] = useState<SlaType[]>([])
+  const allowedRoles = ["Super-admin", "Inventory-Admin"];
+  const auth = useAppSelector((state) => state.auth.user);
 
   const form = useForm<DealerFormValues>({
     resolver: zodResolver(dealerSchema) as any,
@@ -79,7 +82,6 @@ export default function EditDealer() {
     try {
       const slaTypesResponse = await getAllCSlaTypes()
       const item = slaTypesResponse.data
-      console.log('Fetched SLA Types:', item)
       setSlaTypes(item)
     } catch (error) {
       showToast("Failed to load SLA types. Please refresh the page.", "error");
@@ -142,7 +144,16 @@ export default function EditDealer() {
           upload_access_enabled: d.upload_access_enabled,
           default_margin: d.default_margin,
           last_fulfillment_date: d.last_fulfillment_date,
-          assigned_Toprise_employee: d.assigned_Toprise_employee,
+          assigned_Toprise_employee: Array.isArray(d.assigned_Toprise_employee)
+            ? (d.assigned_Toprise_employee
+                .map((ae: any) => {
+                  const id = typeof ae?.assigned_user === "string" ? ae.assigned_user : ae?.assigned_user?._id
+                  if (!id) return undefined
+                  const status: "Active" | "Inactive" = ae?.status === "Inactive" ? "Inactive" : "Active"
+                  return { assigned_user: id, status }
+                })
+                .filter(Boolean) as { assigned_user: string; status: "Active" | "Inactive" }[])
+            : [],
           SLA_type: d.SLA_type,
           dealer_dispatch_time: typeof d.dealer_dispatch_time === "number" ? d.dealer_dispatch_time : 72,
           onboarding_date: d.onboarding_date,
@@ -160,9 +171,7 @@ export default function EditDealer() {
     setSubmitLoading(true)
     try {
       const safeData = { ...data, remarks: data.remarks ?? "" }
-      console.log('Submitting dealer update:', safeData)
       const response = await updateDealerById(dealerId, safeData)
-      console.log('Update API response:', response)
       if (response.success) {
         showToast("Dealer updated successfully", "success");
         setTimeout(() => {
@@ -170,11 +179,21 @@ export default function EditDealer() {
         }, 2000);
       }
     } catch (error) {
-      console.error('Update error:', error)
       showToast("Failed to update dealer. Please try again.", "error");
     } finally {
       setSubmitLoading(false)
     }
+  }
+
+  // Role-based access control
+  if (!auth || !allowedRoles.includes(auth.role)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl text-red-600 font-bold">
+          You do not have permission to access this page.
+        </div>
+      </div>
+    );
   }
 
   if (isLoadingData) {
@@ -519,7 +538,7 @@ export default function EditDealer() {
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="">No SLA Types</SelectItem>
+                          <SelectItem value="no-sla-types" disabled>No SLA Types</SelectItem>
                         )}
                       </SelectContent>
                     </Select>

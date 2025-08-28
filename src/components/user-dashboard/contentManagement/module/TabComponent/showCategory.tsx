@@ -18,14 +18,16 @@ export default function ShowCategory({ searchQuery }: { searchQuery: string }) {
     const [loading, setLoading] = useState(false);
     const itemPerPage = 10;
 
-    // Filter categories by searchQuery
+    // Filter categories by searchQuery with safe array operations
     const filteredCategories = React.useMemo(() => {
+      if (!Categories || !Array.isArray(Categories)) return [];
       if (!searchQuery || !searchQuery.trim()) return Categories;
+      
       const q = searchQuery.trim().toLowerCase();
       return Categories.filter((item) =>
-        (item.category_name?.toLowerCase().includes(q) ||
-          item.category_code?.toLowerCase().includes(q) ||
-          item.category_Status?.toLowerCase().includes(q))
+        (item?.category_name?.toLowerCase().includes(q) ||
+          item?.category_code?.toLowerCase().includes(q) ||
+          item?.category_Status?.toLowerCase().includes(q))
       );
     }, [Categories, searchQuery]);
 
@@ -39,15 +41,17 @@ export default function ShowCategory({ searchQuery }: { searchQuery: string }) {
           setLoading(true);
         try {
           const response = await getCategories();
-          setLoading(false);
           if (!response || !response.data) {
             console.error("No data found in response");
+            setCategories([]);
             return;
           }
           const Items = response.data;
-          setCategories(Items);
+          setCategories(Array.isArray(Items) ? Items : []);
         } catch (err: any) {
           console.error("Error fetching data:", err);
+          setCategories([]);
+        } finally {
           setLoading(false);
         }
       };
@@ -64,6 +68,10 @@ export default function ShowCategory({ searchQuery }: { searchQuery: string }) {
       </div>
     );
   }
+
+  // Safe check for data existence
+  const hasData = paginatedData && Array.isArray(paginatedData) && paginatedData.length > 0;
+  const totalItems = Categories && Array.isArray(Categories) ? Categories.length : 0;
    
   return (
      <div className="p-6">
@@ -78,22 +86,22 @@ export default function ShowCategory({ searchQuery }: { searchQuery: string }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {paginatedData.length > 0 ? (
+          {hasData ? (
             paginatedData.map((item) => (
-              <TableRow key={item._id}>
-                <TableCell>{item.category_name || "No Title"}</TableCell>
+              <TableRow key={item?._id || Math.random()}>
+                <TableCell>{item?.category_name || "No Title"}</TableCell>
                 <TableCell>
-                  {item.category_code || "No Code"}
+                  {item?.category_code || "No Code"}
                 </TableCell>
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
-                      item.category_Status === "Created"
+                      item?.category_Status === "Created"
                         ? "bg-green-100 text-green-800"
                         : "bg-orange-100 text-orange-800"
                     }`}
                   >
-                    {item.category_Status || "Draft"}
+                    {item?.category_Status || "Draft"}
                   </span>
                 </TableCell>
              
@@ -117,7 +125,7 @@ export default function ShowCategory({ searchQuery }: { searchQuery: string }) {
       {/* Pagination - moved outside of table */}
       {Categories.length > 0 && totalPages > 1 && (
         <div className="flex flex-col space-y-4 sm:flex-row sm:justify-between sm:items-center sm:space-y-0 mt-8">
-          {/* Left: Showing X-Y of Z subcategories */}
+          {/* Left: Showing X-Y of Z categories */}
           <div className="text-sm text-gray-600 text-center sm:text-left">
             {`Showing ${(currentPage - 1) * itemPerPage + 1}-${Math.min(
               currentPage * itemPerPage,

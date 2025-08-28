@@ -15,6 +15,7 @@ interface DynamicPaginationProps {
   totalItems: number;
   itemsPerPage: number;
   className?: string;
+  showItemsInfo?: boolean;
 }
 
 export default function DynamicPagination({
@@ -24,6 +25,7 @@ export default function DynamicPagination({
   totalItems,
   itemsPerPage,
   className = "",
+  showItemsInfo = true,
 }: DynamicPaginationProps) {
   if (totalPages <= 1) return null;
 
@@ -64,12 +66,14 @@ export default function DynamicPagination({
   return (
     <div className={`flex flex-col space-y-4 sm:flex-row sm:justify-between sm:items-center sm:space-y-0 px-6 py-4 ${className}`}>
       {/* Items info - Left side */}
-      <div className="text-sm text-gray-600 text-center sm:text-left">
-        {`Showing ${startItem}-${endItem} of ${totalItems} items`}
-      </div>
+      {showItemsInfo && (
+        <div className="text-sm text-gray-600 text-center sm:text-left">
+          {`Showing ${startItem}-${endItem} of ${totalItems} items`}
+        </div>
+      )}
 
       {/* Pagination Controls - Right side */}
-      <div className="flex justify-center sm:justify-end">
+      <div className={`flex ${showItemsInfo ? 'justify-center sm:justify-end' : 'justify-center'}`}>
         <Pagination>
           <PaginationContent className="gap-1">
             <PaginationItem>

@@ -8,6 +8,7 @@ import productByIdReducer from "./slice/product/productByIdSlice";
 import dealerReducer from "./slice/dealer/dealer";
 import contentReducer from "./slice/content/contentSlice"
 import productIdForBulkActionReducer from './slice/product/productIdForBulkAction'
+import cartReducer from "./slice/cart/cartSlice"
 
 const rootReducer = combineReducers({
   auth: authReducer,
@@ -19,6 +20,7 @@ const rootReducer = combineReducers({
   dealer: dealerReducer,
   content: contentReducer,
   productIdForBulkAction: productIdForBulkActionReducer,
+  cart: cartReducer,
 });
 
 export default rootReducer;

@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  addProduct,
+  addProductByDealer,
   getBrandByType,
   getCategories,
   getModelByBrand,
@@ -38,6 +38,7 @@ import { useAppSelector } from "@/store/hooks";
 import { useToast as useGlobalToast } from "@/components/ui/toast";
 import DynamicButton from "@/components/common/button/button";
 import { dealerProductSchema } from "@/lib/schemas/product-schema";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 
 type FormValues = z.infer<typeof dealerProductSchema>;
 
@@ -59,6 +60,8 @@ export default function DealerAddProducts() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [formData, setFormData] = useState<FormValues | null>(null);
   const allowedRoles = ["Super-admin", "Inventory-admin", "Dealer"];
 
   const {
@@ -78,6 +81,13 @@ export default function DealerAddProducts() {
       is_returnable: false,
     },
   });
+
+  // Set dealer ID when component mounts
+  useEffect(() => {
+    if (auth.user && auth.user._id) {
+      setValue("addedByDealerId", auth.user._id);
+    }
+  }, [auth.user, setValue]);
 
   // Parallel fetch for categories, subcategories, types, and year ranges
   useEffect(() => {
@@ -159,6 +169,13 @@ export default function DealerAddProducts() {
 
   // Handle search tags input and Submit
   const onSubmit = async (data: FormValues) => {
+    setFormData(data)
+    setShowConfirmDialog(true)
+  }
+
+  const handleConfirmSubmit = async () => {
+    if (!formData) return
+    
     setSubmitLoading(true);
     try {
       const userId = auth.user && auth.user._id;
@@ -167,18 +184,22 @@ export default function DealerAddProducts() {
         setSubmitLoading(false);
         return;
       }
-      // Add created_by to data
-      const dataWithCreatedBy = { ...data, created_by: userId };
-      const formData = new FormData();
+      // Add created_by and dealer ID to data
+      const dataWithCreatedBy = { 
+        ...formData, 
+        created_by: userId,
+        addedByDealerId: userId // Use the same user ID as dealer ID
+      };
+      const formDataObj = new FormData();
       Object.entries(dataWithCreatedBy).forEach(([key, value]) => {
         if (key !== "images" && key !== "searchTagsArray") {
           if (Array.isArray(value)) {
             // For arrays, append as comma-separated string (FormData does not support arrays natively)
-            formData.append(key, value.join(","));
+            formDataObj.append(key, value.join(","));
           } else if (typeof value === "number") {
-            formData.append(key, value.toString());
+            formDataObj.append(key, value.toString());
           } else {
-            formData.append(
+            formDataObj.append(
               key,
               typeof value === "boolean" ? String(value) : value ?? ""
             );
@@ -187,10 +208,10 @@ export default function DealerAddProducts() {
       });
       if (imageFiles.length > 0) {
         imageFiles.forEach((file) => {
-          formData.append("images", file);
+          formDataObj.append("images", file);
         });
       }
-      await addProduct(formData);
+      await addProductByDealer(formDataObj);
       console.log("Product submitted:", dataWithCreatedBy);
       showToast("Product created successfully ", "success");
       setImageFiles([]);
@@ -202,7 +223,7 @@ export default function DealerAddProducts() {
     } finally {
       setSubmitLoading(false);
     }
-  };
+  }
 
   // Prevent form submission on Enter key in any input
   const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
@@ -1139,20 +1160,25 @@ export default function DealerAddProducts() {
             </p>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Available Dealers */}
+            {/* Dealer ID */}
             <div className="space-y-2">
-              <Label htmlFor="availableDealers" className="text-base font-medium font-sans">
-                Available Dealers
+              <Label
+                htmlFor="addedByDealerId"
+                className="text-base font-medium font-sans"
+              >
+                Dealer ID
               </Label>
               <Input
-                id="availableDealers"
-                placeholder="Enter Available Dealers"
+                id="addedByDealerId"
+                placeholder="Enter Dealer ID"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("availableDealers")}
+                {...register("addedByDealerId")}
+                readOnly
+                value={auth.user?._id || ""}
               />
-              {errors.availableDealers && (
+              {errors.addedByDealerId && (
                 <span className="text-red-500 text-sm">
-                  {errors.availableDealers.message}
+                  {errors.addedByDealerId.message}
                 </span>
               )}
             </div>
@@ -1177,93 +1203,6 @@ export default function DealerAddProducts() {
               )}
             </div>
             {/* Dealer Margin % */}
-            <div className="space-y-2">
-              <Label htmlFor="dealerMargin" className="text-base font-medium font-sans">
-                Dealer Margin %
-              </Label>
-              <Input
-                id="dealerMargin"
-                placeholder="Enter Margin"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("dealerMargin")}
-              />
-              {errors.dealerMargin && (
-                <span className="text-red-500 text-sm">
-                  {errors.dealerMargin.message}
-                </span>
-              )}
-            </div>
-            {/* Dealer Priority Override */}
-            <div className="space-y-2">
-              <Label
-                htmlFor="dealerPriorityOverride"
-                className="text-base font-medium font-sans"
-              >
-                Dealer Priority Override
-              </Label>
-              <Input
-                id="dealerPriorityOverride"
-                placeholder="Enter Override"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("dealerPriorityOverride")}
-              />
-              {errors.dealerPriorityOverride && (
-                <span className="text-red-500 text-sm">
-                  {errors.dealerPriorityOverride.message}
-                </span>
-              )}
-            </div>
-            {/* Stock Expiry Rule */}
-            <div className="space-y-2">
-              <Label htmlFor="stockExpiryRule" className="text-base font-medium font-sans">
-                Stock Expiry Rule
-              </Label>
-              <Input
-                id="stockExpiryRule"
-                placeholder="Enter Rule"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("stockExpiryRule")}
-              />
-              {errors.stockExpiryRule && (
-                <span className="text-red-500 text-sm">
-                  {errors.stockExpiryRule.message}
-                </span>
-              )}
-            </div>
-            {/* Last Stock Update */}
-            <div className="space-y-2">
-              <Label htmlFor="lastStockUpdate" className="text-base font-medium font-sans">
-                Last Stock Update
-              </Label>
-              <Input
-                id="lastStockUpdate"
-                placeholder="Enter Update"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("lastStockUpdate")}
-              />
-              {errors.lastStockUpdate && (
-                <span className="text-red-500 text-sm">
-                  {errors.lastStockUpdate.message}
-                </span>
-              )}
-            </div>
-            {/* Admin Notes */}
-            <div className="space-y-2">
-              <Label htmlFor="adminNotes" className="text-base font-medium font-sans">
-                Admin Notes
-              </Label>
-              <Input
-                id="adminNotes"
-                placeholder="Enter Admin Notes"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("admin_notes")}
-              />
-              {errors.admin_notes && (
-                <span className="text-red-500 text-sm">
-                  {errors.admin_notes.message}
-                </span>
-              )}
-            </div>
           </CardContent>
         </Card>
 
@@ -1348,6 +1287,15 @@ export default function DealerAddProducts() {
           text="Add Product"
           />
         </div>
+        <ConfirmationDialog
+          isOpen={showConfirmDialog}
+          onClose={() => setShowConfirmDialog(false)}
+          onConfirm={handleConfirmSubmit}
+          title="Add Product"
+          description="Are you sure you want to add this product?"
+          confirmText="Yes, Add Product"
+          cancelText="No, Cancel"
+        />
       </form>
     </div>
   );

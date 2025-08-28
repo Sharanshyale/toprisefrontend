@@ -12,7 +12,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-
+import { useRouter } from "next/navigation";
 // import { GitHubLogoIcon } from "@radix-ui/react-icons";
 // import { buttonVariants } from "./ui/button";
 import { Menu } from "lucide-react";
@@ -42,6 +42,7 @@ const routeList: RouteProps[] = [
     href: "/ShippingAndReturnPolicy",
     label: "Shipping & Returns Policy ",
   },
+  
   //   {
   //     href: "#pricing",
   //     label: "Pricing",
@@ -55,6 +56,10 @@ const routeList: RouteProps[] = [
 export const Navbar = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [contactUsOpen, setContactUsOpen] = useState(false);
+  const router = useRouter();
+  const handleShopNow = ()=>{
+    router.replace("/shop");
+  }
   const handleSLAFormSubmit = (data: any) => {
     setContactUsOpen(false);
   };
@@ -138,6 +143,12 @@ return (
               className="ml-2 bg-[#C72920] text-sm lg:text-base px-3 py-1 lg:px-4 lg:py-2"
               text="Contact Us"
               onClick={() => setContactUsOpen(true)}
+            />
+              <DynamicButton
+              variant="default"
+              className="ml-2 bg-[#C72920] text-sm lg:text-base px-3 py-1 lg:px-4 lg:py-2"
+              text="Shop now"
+              onClick={handleShopNow}
             />
           </nav>
         </NavigationMenuList>

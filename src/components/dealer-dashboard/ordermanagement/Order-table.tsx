@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Search, Filter, ChevronDown, Edit, Eye, MoreHorizontal } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Search, Filter, ChevronDown, Edit, Eye, MoreHorizontal, ChevronUp } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -11,13 +10,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
@@ -38,8 +30,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
-import { getOrdersByDealerId, updateOrderStatusByDealer } from "@/service/dealerOrder-services";
-import { DealerOrder } from "@/types/dealerOrder-types";
+import { getOrdersByDealerId, updateOrderStatusByDealer, getDealerPickList } from "@/service/dealerOrder-services";
+import { DealerOrder, DealerPickList } from "@/types/dealerOrder-types";
 import {
   fetchOrdersFailure,
   fetchOrdersRequest,
@@ -50,6 +42,8 @@ import useDebounce from "@/utils/useDebounce";
 import DynamicPagination from "@/components/common/pagination/DynamicPagination";
 import DealerProductsModal from "./DealerProductsModal";
 import { getCookie, getAuthToken } from "@/utils/auth";
+import PickListModal from "./PickListModal";
+import OrderFilters from "./OrderFilters";
 
 interface Order {
   id: string;
@@ -79,22 +73,111 @@ export default function OrdersTable() {
   const error = useAppSelector((state: any) => state.order.error);
   const [orderDetails, setOrderDetails] = useState<any>(null);
   
+  // Sorting state
+  const [sortField, setSortField] = useState("");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Filters state
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPayment, setFilterPayment] = useState<string>("all");
+  
   // Modal state
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedOrderProducts, setSelectedOrderProducts] = useState([]);
   const [selectedOrderId, setSelectedOrderId] = useState("");
 
+  // Pick List Modal state
+  const [pickListModalOpen, setPickListModalOpen] = useState(false);
+  const [pickListData, setPickListData] = useState<DealerPickList[]>([]);
+  const [pickListOrderId, setPickListOrderId] = useState("");
+  const [pickListLoading, setPickListLoading] = useState(false);
+
   // Filtered orders must be declared before pagination logic
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const filteredOrders = searchQuery
-    ? ordersState.filter(
+  
+  // Sort and filter orders
+  const filteredAndSortedOrders = useMemo(() => {
+    let currentOrders = ordersState;
+
+    // Apply search
+    if (searchQuery.trim() !== "") {
+      const q = searchQuery.toLowerCase();
+      currentOrders = currentOrders.filter(
         (order: any) =>
-          order.orderId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          order.customer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          order.number?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : ordersState;
+          order.orderId?.toLowerCase().includes(q) ||
+          order.customer?.toLowerCase().includes(q) ||
+          order.number?.toLowerCase().includes(q)
+      );
+    }
+
+    // Apply filters
+    if (filterStatus !== "all") {
+      currentOrders = currentOrders.filter((o: any) => String(o.status) === filterStatus);
+    }
+    if (filterPayment !== "all") {
+      currentOrders = currentOrders.filter((o: any) => String(o.payment) === filterPayment);
+    }
+
+    // Sort orders
+    if (sortField) {
+      currentOrders.sort((a: any, b: any) => {
+        let aValue: any;
+        let bValue: any;
+        
+        switch (sortField) {
+          case "orderId":
+            aValue = a.orderId?.toLowerCase() || "";
+            bValue = b.orderId?.toLowerCase() || "";
+            break;
+          case "date":
+            aValue = new Date(a.orderDate).getTime();
+            bValue = new Date(b.orderDate).getTime();
+            break;
+          case "customer":
+            aValue = a.customer?.toLowerCase() || "";
+            bValue = b.customer?.toLowerCase() || "";
+            break;
+          case "number":
+            aValue = a.number?.toLowerCase() || "";
+            bValue = b.number?.toLowerCase() || "";
+            break;
+          case "payment":
+            aValue = a.payment?.toLowerCase() || "";
+            bValue = b.payment?.toLowerCase() || "";
+            break;
+          case "value":
+            aValue = parseFloat(a.value?.replace(/[^0-9.-]+/g, "")) || 0;
+            bValue = parseFloat(b.value?.replace(/[^0-9.-]+/g, "")) || 0;
+            break;
+          case "skus":
+            aValue = Array.isArray(a.skus) ? a.skus.length : 1;
+            bValue = Array.isArray(b.skus) ? b.skus.length : 1;
+            break;
+          case "dealers":
+            aValue = a.dealers || 0;
+            bValue = b.dealers || 0;
+            break;
+          case "status":
+            aValue = a.status?.toLowerCase() || "";
+            bValue = b.status?.toLowerCase() || "";
+            break;
+          default:
+            return 0;
+        }
+        
+        if (sortDirection === "asc") {
+          return aValue.localeCompare ? aValue.localeCompare(bValue) : aValue - bValue;
+        } else {
+          return bValue.localeCompare ? bValue.localeCompare(aValue) : bValue - aValue;
+        }
+      });
+    }
+    
+    return currentOrders;
+  }, [ordersState, searchQuery, filterStatus, filterPayment, sortField, sortDirection]);
+
+  const filteredOrders = filteredAndSortedOrders;
 
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
   const paginatedData = filteredOrders.slice(
@@ -115,7 +198,7 @@ export default function OrdersTable() {
     setViewModalOpen(true);
   };
 
-  const handleMarkAsPacked = async (order: any) => {
+  const handleMarkAsPacked = async (order: any, totalWeightKg: number) => {
     try {
       // Show loading state
       showToast("Updating Status: Marking order as packed...", "success");
@@ -143,60 +226,97 @@ export default function OrdersTable() {
   
       if (!dealerId) {
         showToast("Error: Dealer ID not found. Please login again.", "error");
-        return;
+        throw new Error("Dealer ID not found");
       }
   
-      // Call the API
-      const response = await updateOrderStatusByDealer(dealerId, order.id);
+      // Call the API with total weight
+      const response = await updateOrderStatusByDealer(dealerId, order.id, totalWeightKg);
       
-      // Update the local state
+      // Update the local state immediately
       const updatedOrders = ordersState.map((o: any) => 
         o.id === order.id 
           ? { ...o, status: "Packed" }
           : o
       );
+      
+      // Update both local state and Redux store
+      setOrders(updatedOrders);
       dispatch(fetchOrdersSuccess(updatedOrders));
   
       // Show success message
       showToast(`Packed! Order ${order.orderId} is now ready for shipment.`, "success");
       console.log(`Packed! Order ${order.orderId} is now ready for shipment.`);
       console.log("Order status updated:", response);
+      
+      return response; // Return response for success handling
     } catch (error) {
       console.error("Error updating order status:", error);
       showToast("Failed to update order status. Please try again.", "error");
+      throw error; // Re-throw so the modal can handle the error
     }
   };
 
-  // Simulate loading
+  const handleViewPickList = async (order: any) => {
+    setPickListOrderId(order.orderId);
+    setPickListLoading(true);
+    try {
+      // Try to get dealerId from order.dealerMapping[0].dealerId
+      const dealerId = order.dealerMapping && order.dealerMapping[0]?.dealerId;
+      if (!dealerId) {
+        showToast("Dealer ID not found for this order.", "error");
+        setPickListLoading(false);
+        return;
+      }
+      const data = await getDealerPickList(dealerId);
+      setPickListData(data);
+      setPickListModalOpen(true);
+    } catch (error) {
+      showToast("Failed to fetch pick list.", "error");
+    } finally {
+      setPickListLoading(false);
+    }
+  };
+
+  // Fetch orders from backend
   useEffect(() => {
-    let timer: NodeJS.Timeout;
     async function fetchOrders() {
       dispatch(fetchOrdersRequest());
       try {
         const response = await getOrdersByDealerId();
-        const mappedOrders = response.map((order: DealerOrder) => ({
-          id: order.orderDetails._id,
-          orderId: order.orderId,
-          orderDate: new Date(order.orderDetails.orderDate).toLocaleDateString(),
-          customer: order.customerDetails?.name || "",
-          number: order.customerDetails?.phone || "",
-          payment: order.orderDetails.paymentType,
-          value: `₹${order.orderDetails.order_Amount}`,
-          skus: order.orderDetails.skus || [],
-          skusCount: order.orderDetails.skus?.length || 0,
-          dealers: order.orderDetails.dealerMapping?.length || 0,
-          dealerMapping: order.orderDetails.dealerMapping || [],
-          status: order.status, 
-          deliveryCharges: order.orderDetails.order_Amount,
-          orderType: order.orderDetails.orderType,
-          orderSource: order.orderDetails.orderSource,
-          auditLogs: order.orderDetails.auditLogs || [],
-          createdAt: order.orderDetails.createdAt,
-          updatedAt: order.orderDetails.updatedAt,
-          dealerProducts: order.DealerProducts || [], 
-        }));
+        console.log("Raw backend response:", response);
+        
+                 const mappedOrders = response.map((order: DealerOrder) => {
+           // Log the exact status from backend
+           console.log(`Order ${order.orderId} - Raw status from backend:`, order.status);
+           console.log(`Order ${order.orderId} - Status type:`, typeof order.status);
+           console.log(`Order ${order.orderId} - Status value:`, JSON.stringify(order.status));
+           
+           return {
+             id: order.orderDetails._id,
+             orderId: order.orderId,
+             orderDate: new Date(order.orderDetails.orderDate).toLocaleDateString(),
+             customer: order.customerDetails?.name || "",
+             number: order.customerDetails?.phone || "",
+             payment: order.orderDetails.paymentType,
+             value: `₹${order.orderDetails.order_Amount}`,
+             skus: order.orderDetails.skus || [],
+             skusCount: order.orderDetails.skus?.length || 0,
+             dealers: order.orderDetails.dealerMapping?.length || 0,
+             dealerMapping: order.orderDetails.dealerMapping || [],
+             status: order.status, // Show exact backend status without fallback
+             deliveryCharges: order.orderDetails.order_Amount,
+             orderType: order.orderDetails.orderType,
+             orderSource: order.orderDetails.orderSource,
+             auditLogs: order.orderDetails.auditLogs || [],
+             createdAt: order.orderDetails.createdAt,
+             updatedAt: order.orderDetails.updatedAt,
+             dealerProducts: order.DealerProducts || [], 
+           };
+         });
+        
+        console.log("Mapped orders with statuses:", mappedOrders.map(o => ({ orderId: o.orderId, status: o.status })));
+        
         dispatch(fetchOrdersSuccess(mappedOrders));
-        console.log("Dealer Orders Response:", response);
         setOrders(mappedOrders);
       } catch (error) {
         console.error("Failed to fetch dealer orders:", error);
@@ -204,9 +324,6 @@ export default function OrdersTable() {
       }
     }
     fetchOrders();
-    // return () => {
-    //   if (timer) clearTimeout(timer);
-    // };
   }, [dispatch]);
 
   // Debounced search functionality
@@ -234,23 +351,57 @@ export default function OrdersTable() {
     setCurrentPage(1);
   };
 
+  // Handle sorting
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ChevronUp className="w-4 h-4 text-gray-400" />;
+    }
+    return sortDirection === "asc" ? 
+      <ChevronUp className="w-4 h-4 text-[#C72920]" /> : 
+      <ChevronDown className="w-4 h-4 text-[#C72920]" />;
+  };
+
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 rounded text-xs font-medium";
-    switch (status) {
-      case "Pending":
+    
+    // Handle null/undefined status
+    if (!status) {
+      return `${baseClasses} text-gray-700 bg-gray-100`;
+    }
+    
+    // Convert to lowercase for case-insensitive comparison
+    const statusLower = status.toLowerCase();
+    
+    switch (statusLower) {
+      case "pending":
         return `${baseClasses} text-yellow-700 bg-yellow-100`;
-      case "Approved":
-      case "Confirmed":
+      case "approved":
+      case "confirmed":
         return `${baseClasses} text-green-700 bg-green-100`;
-      case "Packed":
-        return `${baseClasses} text-green-700 bg-green-100`;
-      case "Shipped":
+      case "packed":
+        return `${baseClasses} text-blue-700 bg-blue-100`;
+      case "shipped":
         return `${baseClasses} text-purple-700 bg-purple-100`;
-      case "Delivered":
+      case "delivered":
         return `${baseClasses} text-green-900 bg-green-200`;
-      case "Cancelled":
+      case "cancelled":
+      case "canceled":
         return `${baseClasses} text-red-700 bg-red-100`;
+      case "processing":
+        return `${baseClasses} text-orange-700 bg-orange-100`;
+      case "ready":
+        return `${baseClasses} text-indigo-700 bg-indigo-100`;
       default:
+        console.log(`Unknown status: ${status}, using default styling`);
         return `${baseClasses} text-gray-700 bg-gray-100`;
     }
   };
@@ -273,13 +424,19 @@ export default function OrdersTable() {
                 onClear={handleClearSearch}
                 isLoading={isSearching}
               />
-              <div className="flex gap-2 sm:gap-3">
-                <DynamicButton
-                  variant="outline"
-                  text="Filters"
-                  icon={<Filter className="h-4 w-4 mr-2" />}
-                />
-              </div>
+              <OrderFilters
+                search={searchInput}
+                onSearchChange={handleSearchChange}
+                currentStatus={filterStatus}
+                onStatusChange={setFilterStatus}
+                currentPayment={filterPayment}
+                onPaymentChange={setFilterPayment}
+                onResetFilters={() => {
+                  setFilterStatus("all");
+                  setFilterPayment("all");
+                }}
+                orders={ordersState}
+              />
             </div>
           </div>
           {/* Orders Section Header */}
@@ -300,32 +457,62 @@ export default function OrdersTable() {
                   <TableHead className="px-4 py-4 w-8 font-[Red Hat Display]">
                     <Checkbox aria-label="Select all" />
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Order ID
+                  <TableHead 
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer hover:text-[#C72920] transition-colors"
+                    onClick={() => handleSort("orderId")}
+                  >
+                    <div className="flex items-center gap-1">
+                      Order ID
+                      {getSortIcon("orderId")}
+                    </div>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Date
+                  <TableHead 
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer hover:text-[#C72920] transition-colors"
+                    onClick={() => handleSort("date")}
+                  >
+                    <div className="flex items-center gap-1">
+                      Date
+                      {getSortIcon("date")}
+                    </div>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Customer
+                  <TableHead 
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer hover:text-[#C72920] transition-colors"
+                    onClick={() => handleSort("customer")}
+                  >
+                    <div className="flex items-center gap-1">
+                      Customer
+                      {getSortIcon("customer")}
+                    </div>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Number
+                  <TableHead 
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer hover:text-[#C72920] transition-colors"
+                    onClick={() => handleSort("number")}
+                  >
+                    <div className="flex items-center gap-1">
+                      Number
+                      {getSortIcon("number")}
+                    </div>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Payment
+
+
+                  <TableHead 
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer hover:text-[#C72920] transition-colors"
+                    onClick={() => handleSort("skus")}
+                  >
+                    <div className="flex items-center gap-1">
+                      No.of Skus
+                      {getSortIcon("skus")}
+                    </div>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Value
-                  </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    No.of Skus
-                  </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Dealer
-                  </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Status
+
+                  <TableHead 
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer hover:text-[#C72920] transition-colors"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center gap-1">
+                      Status
+                      {getSortIcon("status")}
+                    </div>
                   </TableHead>
                   <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
                     Actions
@@ -358,15 +545,6 @@ export default function OrdersTable() {
                         <TableCell className="px-6 py-4">
                           <Skeleton className="h-3 w-1/2" />
                         </TableCell>
-                        <TableCell className="px-6 py-4">
-                          <Skeleton className="h-3 w-1/2" />
-                        </TableCell>
-                        <TableCell className="px-6 py-4">
-                          <Skeleton className="h-3 w-1/2" />
-                        </TableCell>
-                        <TableCell className="px-6 py-4">
-                          <Skeleton className="h-3 w-1/2" />
-                        </TableCell>
                         <TableCell className="px-6 py-4 text-center">
                           <Skeleton className="h-8 w-8 rounded" />
                         </TableCell>
@@ -377,10 +555,7 @@ export default function OrdersTable() {
                         <TableCell className="px-4 py-4 w-8">
                           <Checkbox />
                         </TableCell>
-                        <TableCell
-                          className="px-6 py-4 font-medium cursor-pointer hover:text-blue-600"
-                          onClick={() => handleViewOrder(order.id)}
-                        >
+                        <TableCell className="px-6 py-4 font-medium">
                           {order.orderId}
                         </TableCell>
                         <TableCell className="px-6 py-4 font-semibold text-[#000000] font-sans">
@@ -392,21 +567,15 @@ export default function OrdersTable() {
                         <TableCell className="px-6 py-4 font-semibold text-[#000000]">
                           {order.number}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
-                          {order.payment}
-                        </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
-                          {order.value}
-                        </TableCell>
+
+
                         <TableCell className="px-6 py-4 font-semibold text-[#000000]">
                           {Array.isArray(order.skus) ? order.skus.length : 1}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
-                          {order.dealers}
-                        </TableCell>
+
                         <TableCell className="px-6 py-4">
                           <span className={getStatusBadge(order.status)}>
-                            {order.status}
+                            {order.status !== null && order.status !== undefined ? order.status : "No Status"}
                           </span>
                         </TableCell>
                         <TableCell className="px-6 py-4">
@@ -423,7 +592,7 @@ export default function OrdersTable() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent
                               align="end"
-                              className="w-40 rounded-lg shadow-lg border border-neutral-200 p-1 font-red-hat b3 text-base"
+                              className="w-36 rounded-lg shadow-lg border border-neutral-200 p-1 font-red-hat b3 text-base"
                             >
                               <DropdownMenuItem 
                                 className="b3 text-base font-red-hat flex items-center gap-2 rounded hover:bg-neutral-100 cursor-pointer"
@@ -432,11 +601,13 @@ export default function OrdersTable() {
                                 <Eye className="h-4 w-4" />
                                 View Products
                               </DropdownMenuItem>
+
                               <DropdownMenuItem 
                                 className="b3 text-base font-red-hat flex items-center gap-2 rounded hover:bg-neutral-100 cursor-pointer"
-                                onClick={() => handleMarkAsPacked(order)}
+                                onClick={() => handleViewPickList(order)}
                               >
-                                Packed
+                                <Eye className="h-4 w-4" />
+                                Pick List
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -473,6 +644,79 @@ export default function OrdersTable() {
         onClose={() => setViewModalOpen(false)}
         products={selectedOrderProducts}
         orderId={selectedOrderId}
+      />
+
+      {/* Pick List Modal */}
+      <PickListModal
+        isOpen={pickListModalOpen}
+        onClose={() => setPickListModalOpen(false)}
+        pickLists={pickListData}
+        orderId={pickListOrderId}
+        orderStatus={ordersState.find((o: any) => o.orderId === pickListOrderId)?.status || ""}
+        onMarkAsPacked={async (totalWeightKg) => {
+          try {
+            console.log("Starting mark as packed process...");
+            console.log("Current order status:", ordersState.find((o: any) => o.orderId === pickListOrderId)?.status);
+            
+            // Find the current order and mark it as packed
+            const currentOrder = ordersState.find((o: any) => o.orderId === pickListOrderId);
+            if (currentOrder) {
+              console.log("Found current order:", currentOrder.orderId, "Status:", currentOrder.status);
+              
+              await handleMarkAsPacked(currentOrder, totalWeightKg);
+              
+              console.log("API call completed, refreshing orders...");
+              
+              // Refresh orders to ensure status is updated
+              try {
+                const refreshedOrders = await getOrdersByDealerId();
+                console.log("Refreshed orders from backend:", refreshedOrders);
+                
+                                 const mappedOrders = refreshedOrders.map((order: DealerOrder) => {
+                   console.log(`Refreshed order ${order.orderId} - Raw status:`, order.status);
+                   console.log(`Refreshed order ${order.orderId} - Status type:`, typeof order.status);
+                   return {
+                     id: order.orderDetails._id,
+                     orderId: order.orderId,
+                     orderDate: new Date(order.orderDetails.orderDate).toLocaleDateString(),
+                     customer: order.customerDetails?.name || "",
+                     number: order.customerDetails?.phone || "",
+                     payment: order.orderDetails.paymentType,
+                     value: `₹${order.orderDetails.order_Amount}`,
+                     skus: order.orderDetails.skus || [],
+                     skusCount: order.orderDetails.skus?.length || 0,
+                     dealers: order.orderDetails.dealerMapping?.length || 0,
+                     dealerMapping: order.orderDetails.dealerMapping || [],
+                     status: order.status, // Keep exact backend status
+                     deliveryCharges: order.orderDetails.order_Amount,
+                     orderType: order.orderDetails.orderType,
+                     orderSource: order.orderDetails.orderSource,
+                     auditLogs: order.orderDetails.auditLogs || [],
+                     createdAt: order.orderDetails.createdAt,
+                     updatedAt: order.orderDetails.updatedAt,
+                     dealerProducts: order.DealerProducts || [], 
+                   };
+                 });
+                
+                const updatedOrder = mappedOrders.find(o => o.orderId === pickListOrderId);
+                console.log("Updated order after refresh:", updatedOrder?.orderId, "Status:", updatedOrder?.status);
+                
+                // Update both local state and Redux store with fresh data
+                setOrders(mappedOrders);
+                dispatch(fetchOrdersSuccess(mappedOrders));
+              } catch (refreshError) {
+                console.error("Failed to refresh orders:", refreshError);
+              }
+              
+              console.log("Closing modal after successful update");
+              // Only close modal after successful API call and refresh
+              setPickListModalOpen(false);
+            }
+          } catch (error) {
+            console.error("Failed to mark as packed:", error);
+            // Don't close modal on error - let user see the error
+          }
+        }}
       />
     </div>
   );

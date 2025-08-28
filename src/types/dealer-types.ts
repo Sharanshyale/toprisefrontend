@@ -11,8 +11,16 @@ export interface ContactPerson {
   phone_number: string
 }
 
+// Minimal shape for an assigned employee's embedded user
+// API may return either an employee id string or a populated object
+export interface AssignedEmployeeUserRef {
+  _id: string
+  // Additional fields may be present when populated; kept loose intentionally
+  [key: string]: any
+}
+
 export interface AssignedEmployee {
-  assigned_user: string
+  assigned_user: string | AssignedEmployeeUserRef | null
   status: "Active" | "Inactive"
   _id?: string
   assigned_at?: string

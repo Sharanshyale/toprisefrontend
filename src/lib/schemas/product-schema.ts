@@ -68,4 +68,6 @@ export const dealerProductSchema = z.object({
   search_tags: z.array(z.string()).optional(),
   seo_description: z.string().optional(),
   created_by: z.string().optional(),
+  // Dealer ID field
+  addedByDealerId: z.string().optional(),
 });

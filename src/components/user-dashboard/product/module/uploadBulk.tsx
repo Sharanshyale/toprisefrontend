@@ -38,7 +38,7 @@ export default function UploadBulkCard ({ isOpen, onClose, mode = 'upload' }: Up
 
   const imageInputRef = React.useRef<HTMLInputElement>(null);
   const csvInputRef = React.useRef<HTMLInputElement>(null);
-    const allowedRoles = [ "Super-admin", "Inventory-admin"];
+    const allowedRoles = [ "Super-admin", "Inventory-Admin", "Inventory-Staff"];
 // Handle file change for both image and CSV files
     const handleFileChange = (event: ChangeEvent<HTMLInputElement>, fileType: string) => {
     const files = event.target.files;

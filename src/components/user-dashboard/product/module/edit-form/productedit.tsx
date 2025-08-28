@@ -134,7 +134,7 @@ export default function ProductEdit() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const { showToast } = useGlobalToast();
-  const allowedRoles = ["Super-admin", "Inventory-admin"];
+  const allowedRoles = ["Super-admin", "Inventory-Admin", "Inventory-Staff"];
 
 
   const {
@@ -305,6 +305,7 @@ export default function ProductEdit() {
         manufacturer_part_name: product.manufacturer_part_name || "",
         product_name: product.product_name || "",
         brand: product.brand?._id || "",
+        vehicle_type: product.brand?.type || "",
         hsn_code: product.hsn_code || "",
         category: product.category?._id || "",
         sub_category: product.sub_category?._id || "",
@@ -369,14 +370,10 @@ export default function ProductEdit() {
   useEffect(() => {
     if (!product) return;
 
-    // Set product type ID for brand dependency
-    if (typeOptions.length > 0) {
-      const selectedTypeObj = typeOptions.find(
-        (t) => t.type_name === product.product_type || t._id === product.product_type
-      );
-      if (selectedTypeObj) {
-        setSelectedProductTypeId(selectedTypeObj._id);
-      }
+    // Set vehicle type ID for brand dependency using the brand's type
+    if (product.brand?.type) {
+      setSelectedProductTypeId(product.brand.type);
+      setValue("vehicle_type", product.brand.type);
     }
 
     // Set brand ID for model dependency
@@ -388,7 +385,7 @@ export default function ProductEdit() {
     if (product.model?._id) {
       setModelId(product.model._id);
     }
-  }, [product, typeOptions]);
+  }, [product, setValue]);
 
   // Prepopulate dependent dropdowns in correct order after product data loads
 
@@ -396,17 +393,8 @@ export default function ProductEdit() {
   useEffect(() => {
     if (!product) return;
 
-    // Product Type
-    if (typeOptions.length > 0) {
-      const selectedTypeObj = typeOptions.find(
-        (t) =>
-          t.type_name === product.product_type || t._id === product.product_type
-      );
-      if (selectedTypeObj) {
-        setValue("product_type", selectedTypeObj.type_name);
-        setValue("vehicle_type", selectedTypeObj._id); // Set ID for Select component
-      }
-    }
+    // Vehicle Type will be set separately when the user selects it
+    // since it's not part of the Product interface from the API
   }, [product, typeOptions, setValue]);
 
   useEffect(() => {
@@ -769,8 +757,8 @@ export default function ProductEdit() {
                 Product Type
               </Label>
               <Select
+                value={watch("product_type") || ""}
                 onValueChange={(value) => setValue("product_type", value)}
-                defaultValue={watch("product_type")}
               >
                 <SelectTrigger
                   id="productType"

@@ -8,9 +8,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { getCategories, getModels } from "@/service/product-Service";
+import { getModels } from "@/service/product-Service";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-
 
 export default function ShowModel({ searchQuery }: { searchQuery: string }) {
         const [model, setModel] = useState<any[]>([]);
@@ -18,36 +17,45 @@ export default function ShowModel({ searchQuery }: { searchQuery: string }) {
         const [loading, setLoading] = useState(false);
         const itemPerPage = 10;
 
-        // Filter models by searchQuery
+        // Filter models by searchQuery with safe array operations
         const filteredModels = React.useMemo(() => {
+          if (!model || !Array.isArray(model)) return [];
           if (!searchQuery || !searchQuery.trim()) return model;
+          
           const q = searchQuery.trim().toLowerCase();
           return model.filter((item) =>
-            (item.model_name?.toLowerCase().includes(q) ||
-              item.brand_ref?.brand_name?.toLowerCase().includes(q) ||
-              item.model_Status?.toLowerCase().includes(q))
+            (item?.model_name?.toLowerCase().includes(q) ||
+              item?.brand_ref?.brand_name?.toLowerCase().includes(q) ||
+              item?.model_Status?.toLowerCase().includes(q))
           );
         }, [model, searchQuery]);
 
-        const totalPages = Math.ceil(filteredModels.length / itemPerPage);
-        const paginatedData = filteredModels.slice(
-          (currentPage - 1) * itemPerPage,
-          currentPage * itemPerPage
-        );
+        // Safe pagination calculations
+        const totalPages = Math.ceil((filteredModels?.length || 0) / itemPerPage);
+        const paginatedData = React.useMemo(() => {
+          if (!filteredModels || !Array.isArray(filteredModels)) return [];
+          return filteredModels.slice(
+            (currentPage - 1) * itemPerPage,
+            currentPage * itemPerPage
+          );
+        }, [filteredModels, currentPage, itemPerPage]);
+
          useEffect(() => {
             const fetchData = async () => {
                 setLoading(true);
               try {
                 const response = await getModels();
-                setLoading(false);
                 if (!response || !response.data) {
                   console.error("No data found in response");
+                  setModel([]);
                   return;
                 }
                 const Items = response.data;
-                setModel(Items);
+                setModel(Array.isArray(Items) ? Items : []);
               } catch (err: any) {
                 console.error("Error fetching data:", err);
+                setModel([]);
+              } finally {
                 setLoading(false);
               }
             };
@@ -64,6 +72,11 @@ export default function ShowModel({ searchQuery }: { searchQuery: string }) {
             </div>
           );
         }
+
+        // Safe check for data existence
+        const hasData = paginatedData && Array.isArray(paginatedData) && paginatedData.length > 0;
+        const totalItems = model && Array.isArray(model) ? model.length : 0;
+
   return (
     <div className="p-6">
       <h2 className="text-xl font-semibold mb-4">Models</h2>
@@ -77,22 +90,22 @@ export default function ShowModel({ searchQuery }: { searchQuery: string }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {paginatedData.length > 0 ? (
+          {hasData ? (
             paginatedData.map((item) => (
-              <TableRow key={item._id}>
-                <TableCell>{item.model_name || "No Title"}</TableCell>
+              <TableRow key={item?._id || Math.random()}>
+                <TableCell>{item?.model_name || "No Title"}</TableCell>
                 <TableCell>
-                  {item.brand_ref?.brand_name || "No Brand"}
+                  {item?.brand_ref?.brand_name || "No Brand"}
                 </TableCell>
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
-                      item.model_Status === "Created"
+                      item?.model_Status === "Created"
                         ? "bg-green-100 text-green-800"
                         : "bg-orange-100 text-orange-800"
                     }`}
                   >
-                    {item.model_Status || "Draft"}
+                    {item?.model_Status || "Draft"}
                   </span>
                 </TableCell>
                 <TableCell>
@@ -112,15 +125,15 @@ export default function ShowModel({ searchQuery }: { searchQuery: string }) {
         </TableBody>
       </Table>
 
-      {/* Pagination - moved outside of table */}
-      {model.length > 0 && totalPages > 1 && (
+      {/* Pagination - with safe checks */}
+      {totalItems > 0 && totalPages > 1 && (
         <div className="flex flex-col space-y-4 sm:flex-row sm:justify-between sm:items-center sm:space-y-0 mt-8">
           {/* Left: Showing X-Y of Z models */}
           <div className="text-sm text-gray-600 text-center sm:text-left">
             {`Showing ${(currentPage - 1) * itemPerPage + 1}-${Math.min(
               currentPage * itemPerPage,
-              model.length
-            )} of ${model.length} models`}
+              totalItems
+            )} of ${totalItems} models`}
           </div>
           {/* Pagination Controls */}
           <div className="flex justify-center sm:justify-end">
@@ -188,5 +201,5 @@ export default function ShowModel({ searchQuery }: { searchQuery: string }) {
         </div>
       )}
     </div>
-  )
+  );
 }

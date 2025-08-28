@@ -246,17 +246,17 @@ export default function CreateSubCategory({ open, onClose, onSuccess }: CreateSu
                       placeholder={
                         categoryLoading
                           ? "Loading categories..."
-                          : category.length === 0
+                          : (!category || !Array.isArray(category) || category.length === 0)
                             ? "No categories available"
                             : "Select a category"
                       } 
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {category.length > 0 ? (
+                    {category && Array.isArray(category) && category.length > 0 ? (
                       category.map((option) => (
-                        <SelectItem key={option._id} value={option._id}>
-                          {option.category_name}
+                        <SelectItem key={option?._id || Math.random()} value={option?._id || ""}>
+                          {option?.category_name || "Unknown Category"}
                         </SelectItem>
                       ))
                     ) : (

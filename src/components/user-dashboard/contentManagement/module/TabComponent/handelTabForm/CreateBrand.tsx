@@ -242,17 +242,17 @@ export default function CreateBrand({ open, onClose, onSuccess }: CreateBrandPro
                       placeholder={
                         typeLoading
                           ? "Loading types..."
-                          : types.length === 0
+                          : (!types || !Array.isArray(types) || types.length === 0)
                             ? "No types available"
                             : "Select a type"
                       } 
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {types.length > 0 ? (
+                    {types && Array.isArray(types) && types.length > 0 ? (
                       types.map((option: any) => (
-                        <SelectItem key={option._id} value={option._id}>
-                          {option.type_name}
+                        <SelectItem key={option?._id || Math.random()} value={option?._id || ""}>
+                          {option?.type_name || "Unknown Type"}
                         </SelectItem>
                       ))
                     ) : (

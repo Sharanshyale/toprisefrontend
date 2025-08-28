@@ -112,7 +112,7 @@ const getStatusBadge = (status: string) => {
 export default function PriceAndMarginEdit() {
   const route = useRouter();
   const payload = getTokenPayload();
-  const isAllowed = payload?.role === "Inventory-admin" || payload?.role === "Super-admin";
+  const isAllowed = payload?.role === "Inventory-Admin" || payload?.role === "Super-admin";
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
 
 

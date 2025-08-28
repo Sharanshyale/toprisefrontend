@@ -9,7 +9,10 @@ import {
   LayoutDashboard,
    LogOutIcon as LogOut,
    LogOutIcon,
- 
+   SettingsIcon,
+   FileText,
+   BarChart3,
+   Package,
 } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {LogOut as logoutAction } from "../store/slice/auth/authSlice"
@@ -29,6 +32,29 @@ import { Button } from "@/components/ui/button"
 import { usePathname, useRouter } from "next/navigation"
 import TicketIcon,{ BoxIcon ,DashboardIcon,userIcon} from "./ui/TicketIcon"
 import { title } from "process"
+
+
+//fullFillmen admin and staff
+// Role-based sidebar visibility config for scalability
+const sidebarVisibilityConfig = {
+  'Fulfillment-Admin': {
+    hide: ["Dashboard", "Inventory Management", "SLA Violations & Reporting", "Content Management", "Ticket", "Settings", "Reports", "Requests"],
+    show: ["Product Management", "User Management", "Payment & Details", "Order Management", "Return Claims", "Audit Logs"],
+  },
+  'Fulfillment-Staff': {
+    hide: ["User Management", "Inventory Management", "SLA Violations & Reporting", "Payment & Details", "Content Management", "Ticket", "Settings", "Audit Logs", "Reports", "Requests"],
+    show: ["Dashboard", "Product Management", "Order Management", "Return Claims", "Pickup"],
+  },
+          'Inventory-Staff': {
+          hide: ["Dashboard", "User Management", "Inventory Management", "SLA Violations & Reporting", "Payment & Details", "Order Management", "Return Claims", "Pickup", "Content Management", "Ticket", "Settings", "Audit Logs", "Reports"],
+          show: ["Product Management", "Requests"],
+        },
+        'Inventory-Admin': {
+          hide: ["Dashboard", "User Management", "Inventory Management", "SLA Violations & Reporting", "Payment & Details", "Order Management", "Return Claims", "Pickup", "Ticket", "Settings", "Reports"],
+          show: ["Product Management", "Requests", "Dealer Management", "Content Management", "Audit Logs"],
+        },
+  // Add more roles here as needed
+};
 
 // This is sample data.
 const data = {
@@ -66,8 +92,13 @@ const data = {
       icon: LayoutDashboard,
     },
     {
-      title: "Pricing & Margin Management",
+      title: "SLA Violations & Reporting",
       url: "/user/dashboard/PricingMarginMangement",
+      icon: TicketIcon,
+    },
+    {
+      title: "Payment & Details",
+      url: "/user/dashboard/paymentDetails",
       icon: TicketIcon,
     },
     {
@@ -80,19 +111,49 @@ const data = {
       url: "/user/dashboard/returnclaims",
       icon: Box,
     },
+    {
+      title: "Pickup",
+      url: "/user/dashboard/pickup",
+      icon: Package,
+    },
        {
       title: "Content Management",
       url: "/user/dashboard/contentManagement",
       icon: BoxIcon,
     },
+    {
+      title: "Ticket ",
+      url: "/user/dashboard/tickets",
+      icon: TicketIcon,
+    },
+    {
+      title: "Settings",
+      url: "/user/dashboard/setting",
+      icon: SettingsIcon,
+    },
+    {
+      title: "Audit Logs",
+      url: "/user/dashboard/audit-logs",
+      icon: FileText,
+    },
+    {
+      title: "Reports",
+      url: "/user/dashboard/reports",
+      icon: BarChart3,
+    },
+    {
+      title: "Requests",
+      url: "/user/dashboard/requests",
+      icon: FileText,
+    }
   ],
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-
+  const auth = useAppSelector((state) => state.auth.user);
   const router = useRouter()
   const dispatch = useAppDispatch()
-  const auth = useAppSelector((state) => state.auth)
+
   const pathname = usePathname();
   const { state } = useSidebar();
   const expanded = state === "expanded";
@@ -107,19 +168,37 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   sessionStorage.clear();
   dispatch(logoutAction());
   persistor.purge(); 
-  router.replace('/login');
+  router.replace('/admin/login');
   window.location.reload();
   }
 
   // Removed debug logs
 
-  // Map navMain to set isActive dynamically
-  const navItems = data.navMain.map(item => ({
-    ...item,
-    isActive:
-      pathname === item.url ||
-      (item.url !== "/user/dashboard" && pathname.startsWith(item.url + "/"))
-  }));
+  // Scalable sidebar filtering based on sidebarVisibilityConfig
+  const role: string = auth.role;
+  let navItems;
+  if (sidebarVisibilityConfig[role as keyof typeof sidebarVisibilityConfig]) {
+    const { hide = [], show = [] } = sidebarVisibilityConfig[role as keyof typeof sidebarVisibilityConfig];
+    navItems = data.navMain
+      .filter(item => {
+        if (hide.includes(item.title)) return false;
+        if (show.length > 0 && !show.includes(item.title)) return false;
+        return true;
+      })
+      .map(item => ({
+        ...item,
+        isActive:
+          pathname === item.url ||
+          (item.url !== "/user/dashboard" && pathname.startsWith(item.url + "/"))
+      }));
+  } else {
+    navItems = data.navMain.map(item => ({
+      ...item,
+      isActive:
+        pathname === item.url ||
+        (item.url !== "/user/dashboard" && pathname.startsWith(item.url + "/"))
+    }));
+  }
 
   return (
     <Sidebar collapsible="icon" {...props}>

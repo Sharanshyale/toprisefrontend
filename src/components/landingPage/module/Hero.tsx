@@ -24,7 +24,7 @@ export default function HeroSection() {
           alt="Background"
           fill
           className="object-cover"
-          priority
+          
         />
         {/* Dark overlay for better text readability */}
         <div className="absolute inset-0 bg-black/60" />

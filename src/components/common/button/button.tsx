@@ -16,7 +16,7 @@ export interface DynamicButtonProps extends React.ComponentProps<"button"> {
   size?: VariantProps<typeof buttonVariants>['size']
 }
 
-const DynamicButton: React.FC<DynamicButtonProps> = ({
+const DynamicButton = React.forwardRef<HTMLButtonElement, DynamicButtonProps>(({
   children,
   text,
   icon,
@@ -30,7 +30,7 @@ const DynamicButton: React.FC<DynamicButtonProps> = ({
   disabled,
   asChild = false,
   ...props
-}) => {
+}, ref) => {
   const isDisabled = disabled || loading
 
   const renderContent = () => {
@@ -58,6 +58,7 @@ const DynamicButton: React.FC<DynamicButtonProps> = ({
 
   return (
     <Button
+      ref={ref}
       variant={variant}
       size={size}
       className={cn(
@@ -72,6 +73,8 @@ const DynamicButton: React.FC<DynamicButtonProps> = ({
       {renderContent()}
     </Button>
   )
-}
+})
+
+DynamicButton.displayName = 'DynamicButton'
 
 export default DynamicButton

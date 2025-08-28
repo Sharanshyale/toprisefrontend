@@ -98,5 +98,130 @@ export async function setSlaType(dealerId: string, data: any): Promise<SlaTypesR
   }
 }
 
+// Get dealer statistics (alternative approach)
+export async function getDealerStats(): Promise<any> {
+  try {
+    // Try to get dealer stats from a different endpoint that doesn't require dealer model in user service
+    const response = await apiClient.get(`/users/api/users/stats/dealer-counts`)
+    return response.data
+  } catch (error) {
+    console.error("Failed to fetch dealer stats:", error)
+    
+    // Return fallback data if the endpoint doesn't exist
+    return {
+      success: true,
+      message: "Fallback dealer stats",
+      data: {
+        totalDealers: 0,
+        activeDealers: 0,
+        deactivatedDealers: 0,
+        dealersWithUploadAccess: 0,
+        dealersWithAssignedEmployees: 0,
+        avgCategoriesPerDealer: 0
+      }
+    }
+  }
+}
 
-// Update Address info for user 
+// patch disble dealer 
+
+export async function disableDealer(dealerId: string): Promise<ApiResponse<Dealer>> {
+  try {
+    const response = await apiClient.patch(`/users/api/users/disable-dealer/${dealerId}`)
+    return response.data
+  } catch (error) {
+    console.error(`Failed to disable dealer with id ${dealerId}:`, error)
+    throw error
+  }
+}
+
+export async function enableDealer(dealerId: string): Promise<ApiResponse<Dealer>> {
+  try {
+    const response = await apiClient.patch(`/users/api/users/enable-dealer/${dealerId}`)
+    return response.data
+  } catch (error) {
+    console.error(`Failed to enable dealer with id ${dealerId}:`, error)
+    throw error
+  }
+}
+
+// Add allowed categories for dealer
+export async function addAllowedCategories(dealerId: string, categories: string[]): Promise<ApiResponse<any>> {
+  try {
+    const response = await apiClient.patch(`/users/api/users/updateDealer/addAllowedCategores/${dealerId}`, {
+      categories
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Failed to add allowed categories for dealer ${dealerId}:`, error)
+    throw error
+  }
+}
+
+// Remove allowed categories for dealer
+export async function removeAllowedCategories(dealerId: string, categories: string[]): Promise<ApiResponse<any>> {
+  try {
+    const response = await apiClient.patch(`/users/api/users/updateDealer/removeAllowedCategores/${dealerId}`, {
+      categories
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Failed to remove allowed categories for dealer ${dealerId}:`, error)
+    throw error
+  }
+}
+
+// Assign employees to a dealer
+export async function assignEmployeesToDealer(
+  dealerId: string,
+  payload: { employeeIds: string[]; assignmentNotes?: string }
+): Promise<ApiResponse<any>> {
+  try {
+    console.log("[assignEmployeesToDealer] dealerId:", dealerId)
+    console.log("[assignEmployeesToDealer] payload:", payload)
+    const response = await apiClient.post(
+      `/users/api/users/dealers/${dealerId}/assign-employees`,
+      payload
+    )
+    console.log("[assignEmployeesToDealer] response:", response?.data)
+    return response.data
+  } catch (error) {
+    console.error(`Failed to assign employees to dealer ${dealerId}:`, error)
+    throw error
+  }
+}
+
+// Remove employees from a dealer
+export async function removeEmployeesFromDealer(
+  dealerId: string,
+  payload: { employeeIds: string[]; assignmentNotes?: string }
+): Promise<ApiResponse<any>> {
+  try {
+    const response = await apiClient.delete(
+      `/users/api/users/dealers/${dealerId}/remove-employees`,
+      { data: payload }
+    )
+    return response.data
+  } catch (error) {
+    console.error(`Failed to remove employees from dealer ${dealerId}:`, error)
+    throw error
+  }
+}
+
+// Get employees assigned to a specific dealer
+export async function getAssignedEmployeesForDealer(
+  dealerId: string
+): Promise<ApiResponse<any>> {
+  try {
+    const response = await apiClient.get(
+      `/users/api/users/dealers/${dealerId}/assigned-employees`
+    )
+    return response.data
+  } catch (error) {
+    console.error(
+      `Failed to fetch assigned employees for dealer ${dealerId}:`,
+      error
+    )
+    throw error
+  }
+}

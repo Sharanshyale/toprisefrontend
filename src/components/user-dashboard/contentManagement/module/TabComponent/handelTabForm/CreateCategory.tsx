@@ -111,10 +111,24 @@ export default function CreateCategory({
       setTypeLoading(true);
       try {
         const response = await getTypes();
+        if (!response || !response.data) {
+          console.error("No data found in response");
+          setType([]);
+          return;
+        }
         const items = response.data;
-        setType(items);
+        // Safe handling of the response structure
+        if (items && items.products && Array.isArray(items.products)) {
+          setType(items.products);
+        } else if (Array.isArray(items)) {
+          setType(items);
+        } else {
+          console.error("Unexpected response structure:", items);
+          setType([]);
+        }
       } catch (err: any) {
         console.error("Failed to fetch vehicle types:", err);
+        setType([]);
         showToast("Failed to fetch vehicle types. Please try again.", "error");
       } finally {
         setTypeLoading(false);
@@ -122,7 +136,7 @@ export default function CreateCategory({
     };
     
     fetchTypes();
-  }, []); // Added empty dependency array to run only once on mount
+  }, [showToast]); // Added showToast to dependencies
 
   // Handle form submission
   const handleFormSubmit = useCallback(
@@ -294,17 +308,17 @@ export default function CreateCategory({
                       placeholder={
                         typeLoading 
                           ? "Loading vehicle types..." 
-                          : type.length === 0 
+                          : (!type || !Array.isArray(type) || type.length === 0)
                             ? "No vehicle types available" 
                             : "Select a vehicle type"
                       } 
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {type.length > 0 ? (
+                    {type && Array.isArray(type) && type.length > 0 ? (
                       type.map((option) => (
-                        <SelectItem key={option._id} value={option._id}>
-                          {option.type_name}
+                        <SelectItem key={option?._id || Math.random()} value={option?._id || ""}>
+                          {option?.type_name || "Unknown Type"}
                         </SelectItem>
                       ))
                     ) : (

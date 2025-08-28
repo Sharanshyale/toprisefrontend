@@ -33,7 +33,7 @@ interface DataTableProps<T> {
   allSelected: boolean;
   columns: {
     key: string;
-    header: string;
+    header: React.ReactNode;
     render?: (item: T) => React.ReactNode;
     className?: string;
     hideOnMobile?: boolean;

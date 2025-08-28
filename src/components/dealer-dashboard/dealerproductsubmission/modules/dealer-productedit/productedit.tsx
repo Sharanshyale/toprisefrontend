@@ -36,6 +36,7 @@ import { useParams } from "next/navigation";
 import { Product } from "@/types/product-Types";
 import { useToast as useGlobalToast } from "@/components/ui/toast";
 import { dealerProductSchema } from "@/lib/schemas/product-schema";
+import { checkDealerProductPermission } from "@/service/dealer-product";
 
 type FormValues = z.infer<typeof dealerProductSchema>;
 
@@ -68,6 +69,9 @@ export default function DealerProductEdit() {
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const { showToast } = useGlobalToast();
   const allowedRoles = ["Super-admin", "Inventory-admin", "Dealer"];
+  const [allowedFields, setAllowedFields] = useState<string[] | null>(null);
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionError, setPermissionError] = useState<string>("");
 
 
   const {
@@ -106,12 +110,30 @@ export default function DealerProductEdit() {
             getTypes(),
             getYearRange(),
           ]);
-        setCategoryOptions(categories.data.map((category: any) => category));
-        setSubCategoryOptions(
-          subCategories.data.map((category: any) => category)
-        );
-        setTypeOptions(types.data.map((type: any) => type));
-        setYearRangeOptions(yearRanges.data.map((year: any) => year));
+        const categoriesArr: any[] = Array.isArray((categories as any).data)
+          ? (categories as any).data
+          : Array.isArray((categories as any)?.data?.products)
+          ? (categories as any).data.products
+          : [];
+        const subCategoriesArr: any[] = Array.isArray((subCategories as any).data)
+          ? (subCategories as any).data
+          : Array.isArray((subCategories as any)?.data?.products)
+          ? (subCategories as any).data.products
+          : [];
+        const typesArr: any[] = Array.isArray((types as any).data)
+          ? (types as any).data
+          : Array.isArray((types as any)?.data?.products)
+          ? (types as any).data.products
+          : [];
+        const yearsArr: any[] = Array.isArray((yearRanges as any).data)
+          ? (yearRanges as any).data
+          : Array.isArray((yearRanges as any)?.data?.products)
+          ? (yearRanges as any).data.products
+          : [];
+        setCategoryOptions(categoriesArr);
+        setSubCategoryOptions(subCategoriesArr);
+        setTypeOptions(typesArr);
+        setYearRangeOptions(yearsArr);
         console.log("Fetched all initial data in parallel");
       } catch (error) {
         console.error("Failed to fetch initial data in parallel:", error);
@@ -132,9 +154,14 @@ export default function DealerProductEdit() {
       setIsLoadingBrands(true);
       try {
         const response = await getBrandByType(selectedProductTypeId);
-        console.log("Brand Options:", response.data);
+        console.log("Brand Options:", (response as any).data);
         if (isMounted) {
-          setBrandOptions(response.data.map((brand: any) => brand));
+          const arr: any[] = Array.isArray((response as any).data)
+            ? (response as any).data
+            : Array.isArray((response as any)?.data?.products)
+            ? (response as any).data.products
+            : [];
+          setBrandOptions(arr);
         }
       } catch (error) {
         if (isMounted) setBrandOptions([]);
@@ -159,8 +186,13 @@ export default function DealerProductEdit() {
     const fetchModelsByBrand = async () => {
       try {
         const response = await getModelByBrand(selectedbrandId);
-        setModelOptions(response.data.map((model: any) => model));
-        console.log("Model Options:", response.data);
+        const arr: any[] = Array.isArray((response as any).data)
+          ? (response as any).data
+          : Array.isArray((response as any)?.data?.products)
+          ? (response as any).data.products
+          : [];
+        setModelOptions(arr);
+        console.log("Model Options:", (response as any).data);
       } catch (error) {
         setModelOptions([]);
         console.error("Failed to fetch models by brand:", error);
@@ -178,8 +210,13 @@ export default function DealerProductEdit() {
     const fetchVarientByModel = async () => {
       try {
         const response = await getvarientByModel(modelId);
-        setVarientOptions(response.data.map((varient: any) => varient));
-        console.log("Varient Options:", response.data);
+        const arr: any[] = Array.isArray((response as any).data)
+          ? (response as any).data
+          : Array.isArray((response as any)?.data?.products)
+          ? (response as any).data.products
+          : [];
+        setVarientOptions(arr);
+        console.log("Varient Options:", (response as any).data);
       } catch (error) {
         console.error("Failed to fetch varient options:", error);
       }
@@ -199,16 +236,13 @@ export default function DealerProductEdit() {
       
       try {
         const response = await getProductById(id.id);
-        // response is ProductResponse, which has data: Product[]
-        const data = response.data;
-        if (Array.isArray(data) && data.length > 0) {
-          setProduct(data[0]);
-        } else if (
-          typeof data === "object" &&
-          data !== null &&
-          !Array.isArray(data)
-        ) {
-          setProduct(data as Product);
+        const rawData: any = (response as any).data;
+        if (Array.isArray(rawData?.products) && rawData.products.length > 0) {
+          setProduct(rawData.products[0] as Product);
+        } else if (Array.isArray(rawData) && rawData.length > 0) {
+          setProduct(rawData[0] as Product);
+        } else if (rawData && typeof rawData === "object" && rawData._id) {
+          setProduct(rawData as Product);
         } else {
           setProduct(null);
           setApiError("Product not found.");
@@ -233,6 +267,7 @@ export default function DealerProductEdit() {
   // Populate form with fetched product data
   useEffect(() => {
     if (product) {
+      console.log("Setting form values for product:", product);
       reset({
         sku_code: product.sku_code || "",
         manufacturer_part_name: product.manufacturer_part_name || "",
@@ -248,7 +283,7 @@ export default function DealerProductEdit() {
         fulfillment_priority: product.fulfillment_priority,
         admin_notes: product.admin_notes || "",
         make: product.make && product.make.length > 0 ? product.make[0] : "",
-       
+        vehicle_type: "", // Will be set in separate useEffect
         model: product.model?._id || "",
         year_range:
           product.year_range && product.year_range.length > 0
@@ -278,13 +313,18 @@ export default function DealerProductEdit() {
         dealerMargin: "",
         dealerPriorityOverride: "",
         stockExpiryRule: "",
-        lastStockUpdate: product.available_dealers?.last_stock_update || "",
+        lastStockUpdate:
+          Array.isArray(product.available_dealers) &&
+          product.available_dealers.length > 0
+            ? product.available_dealers[0]?.last_stock_update || ""
+            : "",
         LastinquiredAt: product.last_stock_inquired || "",
         seo_title: product.seo_title || "",
         searchTags: product.search_tags?.join(",") || "",
         search_tags: product.search_tags || [],
         seo_description: product.seo_description || "",
       });
+      
       // Initialize image previews for existing images
       if (product.images && Array.isArray(product.images)) {
         setExistingImages(product.images);
@@ -296,6 +336,33 @@ export default function DealerProductEdit() {
       setRemovedExistingIndexes([]);
     }
   }, [product, reset]);
+
+  // Force update all form fields after reset to ensure proper population
+  useEffect(() => {
+    if (product) {
+      // Set vehicle_type immediately if typeOptions are available
+      if (typeOptions.length > 0) {
+        const selectedTypeObj = typeOptions.find(
+          (t) => t.type_name === product.product_type || t._id === product.product_type
+        );
+        if (selectedTypeObj) {
+          setValue("vehicle_type", selectedTypeObj._id);
+          setSelectedProductTypeId(selectedTypeObj._id);
+        }
+      }
+      
+      // Set brand immediately if brandOptions are available
+      if (brandOptions.length > 0 && product.brand?._id) {
+        const selectedBrandObj = brandOptions.find(
+          (b) => b._id === product.brand?._id
+        );
+        if (selectedBrandObj) {
+          setValue("brand", selectedBrandObj._id);
+          setSelectedBrandId(selectedBrandObj._id);
+        }
+      }
+    }
+  }, [product, typeOptions, brandOptions, setValue]);
 
   // Initialize dependent state variables when product loads
   useEffect(() => {
@@ -323,56 +390,59 @@ export default function DealerProductEdit() {
   }, [product, typeOptions]);
 
   // Prepopulate dependent dropdowns in correct order after product data loads
-
-  
   useEffect(() => {
-    if (!product) return;
+    if (!product || !typeOptions.length) return;
 
-    // Product Type
-    if (typeOptions.length > 0) {
+    // Product Type - Find and set the vehicle type ID
+    const selectedTypeObj = typeOptions.find(
+      (t) => t.type_name === product.product_type || t._id === product.product_type
+    );
+    if (selectedTypeObj) {
+      setValue("vehicle_type", selectedTypeObj._id);
+      setSelectedProductTypeId(selectedTypeObj._id);
+    }
+  }, [product, typeOptions, setValue]);
+
+  // Force update vehicle_type when product loads
+  useEffect(() => {
+    if (product && typeOptions.length > 0) {
       const selectedTypeObj = typeOptions.find(
-        (t) =>
-          t.type_name === product.product_type || t._id === product.product_type
+        (t) => t.type_name === product.product_type || t._id === product.product_type
       );
       if (selectedTypeObj) {
-        setValue("product_type", selectedTypeObj.type_name);
-        setValue("vehicle_type", selectedTypeObj._id); // Set ID for Select component
+        setValue("vehicle_type", selectedTypeObj._id);
       }
     }
   }, [product, typeOptions, setValue]);
 
   useEffect(() => {
-    // Brand
+    // Brand - Wait for brandOptions to be populated
     if (product && brandOptions.length > 0 && product.brand) {
       const selectedBrandObj = brandOptions.find(
-        (b) =>
-          b.brand_name === product.brand?.brand_name ||
-          b._id === product.brand?._id
+        (b) => b._id === product.brand?._id
       );
       if (selectedBrandObj) {
         setSelectedBrandId(selectedBrandObj._id);
-        setValue("brand", selectedBrandObj._id); // Set ID, not name
+        setValue("brand", selectedBrandObj._id);
       }
     }
   }, [product, brandOptions, setValue]);
 
   useEffect(() => {
-    // Model
+    // Model - Wait for modelOptions to be populated
     if (product && modelOptions.length > 0 && product.model) {
       const selectedModelObj = modelOptions.find(
-        (m) =>
-          m.model_name === product.model?.model_name ||
-          m._id === product.model?._id
+        (m) => m._id === product.model?._id
       );
       if (selectedModelObj) {
         setModelId(selectedModelObj._id);
-        setValue("model", selectedModelObj._id); // Set ID, not name
+        setValue("model", selectedModelObj._id);
       }
     }
   }, [product, modelOptions, setValue]);
 
   useEffect(() => {
-    // Variant
+    // Variant - Wait for varientOptions to be populated
     if (
       product &&
       varientOptions.length > 0 &&
@@ -380,18 +450,16 @@ export default function DealerProductEdit() {
       product.variant.length > 0
     ) {
       const selectedVariantObj = varientOptions.find(
-        (v) =>
-          v.variant_name === product.variant?.[0]?.variant_name ||
-          v._id === product.variant?.[0]?._id
+        (v) => v._id === product.variant?.[0]?._id
       );
       if (selectedVariantObj) {
-        setValue("variant", selectedVariantObj._id); // Set ID, not name
+        setValue("variant", selectedVariantObj._id);
       }
     }
   }, [product, varientOptions, setValue]);
 
   useEffect(() => {
-    // Year Range
+    // Year Range - Wait for yearRangeOptions to be populated
     if (
       product &&
       yearRangeOptions.length > 0 &&
@@ -399,15 +467,86 @@ export default function DealerProductEdit() {
       product.year_range.length > 0
     ) {
       const selectedYearObj = yearRangeOptions.find(
-        (y) =>
-          y.year_name === product.year_range?.[0]?.year_name ||
-          y._id === product.year_range?.[0]?._id
+        (y) => y._id === product.year_range?.[0]?._id
       );
       if (selectedYearObj) {
-        setValue("year_range", selectedYearObj._id); // Set ID for Select component
+        setValue("year_range", selectedYearObj._id);
       }
     }
   }, [product, yearRangeOptions, setValue]);
+
+  // Force form update when options are loaded
+  useEffect(() => {
+    if (product && categoryOptions.length > 0) {
+      setValue("category", product.category?._id || "");
+    }
+  }, [product, categoryOptions, setValue]);
+
+  useEffect(() => {
+    if (product && subCategoryOptions.length > 0) {
+      setValue("sub_category", product.sub_category?._id || "");
+    }
+  }, [product, subCategoryOptions, setValue]);
+
+  // Ensure product type is set when product loads
+  useEffect(() => {
+    if (product) {
+      setValue("product_type", product.product_type || "");
+    }
+  }, [product, setValue]);
+
+  // Ensure vehicle_type is set when both product and typeOptions are available
+  useEffect(() => {
+    if (product && typeOptions.length > 0) {
+      console.log("Setting vehicle_type for product:", product.product_type);
+      console.log("Available typeOptions:", typeOptions);
+      
+      // First try to find by type_name (string match)
+      let selectedTypeObj = typeOptions.find(
+        (t) => t.type_name === product.product_type
+      );
+      
+      // If not found, try to find by _id
+      if (!selectedTypeObj) {
+        selectedTypeObj = typeOptions.find(
+          (t) => t._id === product.product_type
+        );
+      }
+      
+      if (selectedTypeObj) {
+        console.log("Found matching type:", selectedTypeObj);
+        setValue("vehicle_type", selectedTypeObj._id);
+        setSelectedProductTypeId(selectedTypeObj._id);
+      } else {
+        console.log("No matching type found for:", product.product_type);
+        // Set a default value if no match found
+        if (typeOptions.length > 0) {
+          setValue("vehicle_type", typeOptions[0]._id);
+          setSelectedProductTypeId(typeOptions[0]._id);
+        }
+      }
+    }
+  }, [product, typeOptions, setValue]);
+
+  // Ensure brand is set when both product and brandOptions are available
+  useEffect(() => {
+    if (product && brandOptions.length > 0) {
+      console.log("Setting brand for product:", product.brand);
+      console.log("Available brandOptions:", brandOptions);
+      
+      const selectedBrandObj = brandOptions.find(
+        (b) => b._id === product.brand?._id
+      );
+      
+      if (selectedBrandObj) {
+        console.log("Found matching brand:", selectedBrandObj);
+        setValue("brand", selectedBrandObj._id);
+        setSelectedBrandId(selectedBrandObj._id);
+      } else {
+        console.log("No matching brand found for:", product.brand?._id);
+      }
+    }
+  }, [product, brandOptions, setValue]);
 
   const onSubmit = async (data: FormValues) => {
     setApiError("");
@@ -417,20 +556,43 @@ export default function DealerProductEdit() {
       const preparedData = {
         ...data,
         hsn_code: data.hsn_code ? Number(data.hsn_code) : undefined,
-        is_universal: typeof data.is_universal === "boolean" ? data.is_universal : data.is_universal === "yes",
-        is_consumable: typeof data.is_consumable === "boolean" ? data.is_consumable : data.is_consumable === "yes",
+        is_universal:
+          typeof data.is_universal === "boolean"
+            ? data.is_universal
+            : data.is_universal === "yes",
+        is_consumable:
+          typeof data.is_consumable === "boolean"
+            ? data.is_consumable
+            : data.is_consumable === "yes",
+      } as any;
+
+      // Ensure required relational fields are not sent as empty strings.
+      const normalizedData = {
+        ...preparedData,
+        brand: preparedData.brand || product?.brand?._id || undefined,
+        category: preparedData.category || product?.category?._id || undefined,
+        sub_category:
+          preparedData.sub_category || product?.sub_category?._id || undefined,
+        model: preparedData.model || product?.model?._id || undefined,
+        variant:
+          preparedData.variant || product?.variant?.[0]?._id || undefined,
+        year_range:
+          preparedData.year_range || product?.year_range?.[0]?._id || undefined,
       };
 
       // Always use FormData for images update
       const formData = new FormData();
       // Append all prepared fields except images
-      Object.entries(preparedData).forEach(([key, value]) => {
-        if (key !== "images" && value != null) {
-          if (Array.isArray(value)) {
-            value.forEach((v) => formData.append(`${key}[]`, v));
-          } else {
-            formData.append(key, value.toString());
-          }
+      Object.entries(normalizedData).forEach(([key, value]) => {
+        if (key === "images") return;
+        if (value === undefined || value === null) return;
+        if (typeof value === "string" && value.trim() === "") return;
+        if (Array.isArray(value)) {
+          value
+            .filter((v) => v !== undefined && v !== null && `${v}`.trim() !== "")
+            .forEach((v) => formData.append(`${key}[]`, v as any));
+        } else {
+          formData.append(key, value.toString());
         }
       });
       // Append new image files
@@ -474,12 +636,49 @@ export default function DealerProductEdit() {
       setIsSubmitting(false);
     }
   };
+  useEffect(() => {
+    // Only check permission for Dealer role
+    if (auth && auth.role === "Dealer" && auth._id) {
+      setPermissionLoading(true);
+      setPermissionError("");
+      checkDealerProductPermission(auth._id)
+        .then((res) => {
+          if (res?.hasPermission && res.data?.userPermissions?.allowedFields) {
+            setAllowedFields(res.data.userPermissions.allowedFields);
+          } else {
+            setAllowedFields([]);
+          }
+        })
+        .catch((err) => {
+          setPermissionError("Failed to fetch field permissions");
+          setAllowedFields([]);
+        })
+        .finally(() => setPermissionLoading(false));
+    } else {
+      setAllowedFields(null); // null means unrestricted (admin etc)
+    }
+  }, [auth]);
     if (!auth || !allowedRoles.includes(auth.role)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl text-red-600 font-bold">
           You do not have permission to access this page.
         </div>
+      </div>
+    );
+  }
+
+  if (permissionLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl text-gray-600 font-bold">Checking permissions...</div>
+      </div>
+    );
+  }
+  if (permissionError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl text-red-600 font-bold">{permissionError}</div>
       </div>
     );
   }
@@ -545,6 +744,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Sku Code"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("sku_code")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("sku_code"))}
               />
               {errors.sku_code && (
                 <span className="text-red-500 text-sm">
@@ -565,6 +765,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter No. of Stock"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("no_of_stock", { valueAsNumber: true })}
+                disabled={Boolean(allowedFields && !allowedFields.includes("no_of_stock"))}
               />
               {errors.no_of_stock && (
                 <span className="text-red-500 text-sm">
@@ -585,6 +786,7 @@ export default function DealerProductEdit() {
                 placeholder="Part Number"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("manufacturer_part_name")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("manufacturer_part_name"))}
               />
               {errors.manufacturer_part_name && (
                 <span className="text-red-500 text-sm">
@@ -602,6 +804,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Product Name"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("product_name")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("product_name"))}
               />
               {errors.product_name && (
                 <span className="text-red-500 text-sm">
@@ -621,6 +824,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter HSN Code"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("hsn_code")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("hsn_code"))}
               />
               {errors.hsn_code && (
                 <span className="text-red-500 text-sm">
@@ -636,6 +840,7 @@ export default function DealerProductEdit() {
               <Select
                 value={watch("category") || ""}
                 onValueChange={(value) => setValue("category", value)}
+                disabled={Boolean(allowedFields && !allowedFields.includes("category"))}
               >
                 <SelectTrigger
                   id="category"
@@ -671,6 +876,7 @@ export default function DealerProductEdit() {
               <Select
                 value={watch("sub_category") || ""}
                 onValueChange={(value) => setValue("sub_category", value)}
+                disabled={Boolean(allowedFields && !allowedFields.includes("sub_category"))}
               >
                 <SelectTrigger
                   id="sub_category"
@@ -704,8 +910,9 @@ export default function DealerProductEdit() {
                 Product Type
               </Label>
               <Select
+                value={watch("product_type") || ""}
                 onValueChange={(value) => setValue("product_type", value)}
-                defaultValue={watch("product_type")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("product_type"))}
               >
                 <SelectTrigger
                   id="productType"
@@ -736,6 +943,7 @@ export default function DealerProductEdit() {
                   setValue("vehicle_type", value);
                   setSelectedProductTypeId(value);
                 }}
+                disabled={Boolean(allowedFields && !allowedFields.includes("vehicle_type"))}
               >
                 <SelectTrigger
                   id="vehicle_type"
@@ -790,6 +998,7 @@ export default function DealerProductEdit() {
 
                   setSelectedBrandId(value);
                 }}
+                disabled={Boolean(allowedFields && !allowedFields.includes("brand"))}
               >
                 <SelectTrigger
                   id="brand"
@@ -835,6 +1044,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Make"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("make")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("make"))}
               />
               {errors.make && (
                 <span className="text-red-500 text-sm">
@@ -853,6 +1063,7 @@ export default function DealerProductEdit() {
 
                   setModelId(value);
                 }}
+                disabled={Boolean(allowedFields && !allowedFields.includes("model"))}
               >
                 <SelectTrigger
                   id="model"
@@ -888,6 +1099,7 @@ export default function DealerProductEdit() {
               <Select
                 value={watch("variant") || ""}
                 onValueChange={(value) => setValue("variant", value)}
+                disabled={Boolean(allowedFields && !allowedFields.includes("variant"))}
               >
                 <SelectTrigger
                   id="variant"
@@ -923,6 +1135,7 @@ export default function DealerProductEdit() {
               <Select
                 value={watch("year_range") || ""}
                 onValueChange={(value) => setValue("year_range", value)}
+                disabled={Boolean(allowedFields && !allowedFields.includes("year_range"))}
               >
                 <SelectTrigger
                   id="year_range"
@@ -961,6 +1174,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Fitment Notes"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("fitment_notes")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("fitment_notes"))}
               />
               {errors.fitment_notes && (
                 <span className="text-red-500 text-sm">
@@ -984,6 +1198,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Fulfillment Priority"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("fulfillment_priority", { valueAsNumber: true })}
+                disabled={Boolean(allowedFields && !allowedFields.includes("fulfillment_priority"))}
               />
               {errors.fulfillment_priority && (
                 <span className="text-red-500 text-sm">
@@ -999,6 +1214,7 @@ export default function DealerProductEdit() {
               <Select
                 value={typeof watch("is_universal") === "boolean" ? (watch("is_universal") ? "yes" : "no") : ""}
                 onValueChange={(value) => setValue("is_universal", value === "yes")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("is_universal"))}
               >
                 <SelectTrigger
                   id="is_universal"
@@ -1044,6 +1260,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Key Specifications"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("keySpecifications")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("keySpecifications"))}
               />
               {errors.keySpecifications && (
                 <span className="text-red-500 text-sm">
@@ -1061,6 +1278,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Dimensions"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("dimensions")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("dimensions"))}
               />
               {errors.dimensions && (
                 <span className="text-red-500 text-sm">
@@ -1078,6 +1296,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Weight"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("weight")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("weight"))}
               />
               {errors.weight && (
                 <span className="text-red-500 text-sm">
@@ -1095,6 +1314,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Certifications"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("certifications")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("certifications"))}
               />
               {errors.certifications && (
                 <span className="text-red-500 text-sm">
@@ -1112,6 +1332,7 @@ export default function DealerProductEdit() {
                 placeholder="Enter Warranty"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("warranty")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("warranty"))}
               />
               {errors.warranty && (
                 <span className="text-red-500 text-sm">
@@ -1127,6 +1348,7 @@ export default function DealerProductEdit() {
               <Select
                 value={typeof watch("is_consumable") === "boolean" ? (watch("is_consumable") ? "yes" : "no") : ""}
                 onValueChange={(value) => setValue("is_consumable", value === "yes")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("is_consumable"))}
               >
                 <SelectTrigger
                   id="is_consumable"
@@ -1231,6 +1453,7 @@ export default function DealerProductEdit() {
                 placeholder="Paste Link"
                 className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
                 {...register("videoUrl")}
+                disabled={Boolean(allowedFields && !allowedFields.includes("videoUrl"))}
               />
               {errors.videoUrl && (
                 <span className="text-red-500 text-sm">
@@ -1249,6 +1472,7 @@ export default function DealerProductEdit() {
               <Select
                 value={watch("brochure_available") || ""}
                 onValueChange={(value) => setValue("brochure_available", value)}
+                disabled={Boolean(allowedFields && !allowedFields.includes("brochure_available"))}
               >
                 <SelectTrigger
                   id="brochure_available"
@@ -1264,332 +1488,6 @@ export default function DealerProductEdit() {
               {errors.brochure_available && (
                 <span className="text-red-500 text-sm">
                   {errors.brochure_available.message}
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        {/* Pricing details */}
-        <Card className="border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-red-600 font-semibold text-lg">
-              Pricing & Tax
-            </CardTitle>
-            <p className="text-sm text-gray-500">
-              Provide the pricing and tax information required for listing and
-              billing.
-            </p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* MRP (with gst) */}
-            <div className="space-y-2">
-              <Label htmlFor="mrp" className="text-sm font-medium">
-                MRP (with GST)
-              </Label>
-              <Input
-                id="mrp_with_gst"
-                placeholder="Enter MRP"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("mrp_with_gst")}
-              />
-              {errors.mrp_with_gst && (
-                <span className="text-red-500 text-sm">
-                  {errors.mrp_with_gst.message}
-                </span>
-              )}
-            </div>
-            {/* Selling Price */}
-            <div className="space-y-2">
-              <Label htmlFor="sellingPrice" className="text-sm font-medium">
-                Selling Price
-              </Label>
-              <Input
-                id="selling_price"
-                type="number"
-                step="1"
-                min="0"
-                placeholder="Enter Selling Price"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("selling_price", { valueAsNumber: true })}
-              />
-              {errors.selling_price && (
-                <span className="text-red-500 text-sm">
-                  {errors.selling_price.message}
-                </span>
-              )}
-            </div>
-            {/* GST % */}
-            <div className="space-y-2">
-              <Label htmlFor="gst" className="text-sm font-medium">
-                GST %
-              </Label>
-              <Input
-                id="gst_percentage"
-                placeholder="Enter GST"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("gst_percentage")}
-              />
-              {errors.gst_percentage && (
-                <span className="text-red-500 text-sm">
-                  {errors.gst_percentage.message}
-                </span>
-              )}
-            </div>
-            {/* is_returnable */}
-            <div className="space-y-2">
-              <Label htmlFor="returnable" className="text-sm font-medium">
-                Returnable
-              </Label>
-              <Input
-                id="returnable"
-                placeholder="Enter Returnable"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("is_returnable")}
-              />
-              {errors.is_returnable && (
-                <span className="text-red-500 text-sm">
-                  {errors.is_returnable.message}
-                </span>
-              )}
-            </div>
-            {/* Return Policy */}
-            <div className="space-y-2">
-              <Label htmlFor="return_policy" className="text-sm font-medium">
-                Return Policy
-              </Label>
-              <Input
-                id="return_policy"
-                placeholder="Enter Return Policy"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("return_policy")}
-              />
-              {errors.return_policy && (
-                <span className="text-red-500 text-sm">
-                  {errors.return_policy.message}
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        {/* Dealer-Level Mapping & Routing */}
-        <Card className="border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-red-600 font-semibold text-lg">
-              Dealer-Level Mapping & Routing
-            </CardTitle>
-            <p className="text-sm text-gray-500">
-              Dealer product quantity and quality
-            </p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Available Dealers */}
-            <div className="space-y-2">
-              <Label htmlFor="availableDealers" className="text-sm font-medium">
-                Available Dealers
-              </Label>
-              <Input
-                id="availableDealers"
-                placeholder="Enter Available Dealers"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("availableDealers")}
-              />
-              {errors.availableDealers && (
-                <span className="text-red-500 text-sm">
-                  {errors.availableDealers.message}
-                </span>
-              )}
-            </div>
-            {/* Quantity per Dealer */}
-            <div className="space-y-2">
-              <Label
-                htmlFor="quantityPerDealer"
-                className="text-sm font-medium"
-              >
-                Quantity per Dealer
-              </Label>
-              <Input
-                id="quantityPerDealer"
-                placeholder="Enter Quantity"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("quantityPerDealer")}
-              />
-              {errors.quantityPerDealer && (
-                <span className="text-red-500 text-sm">
-                  {errors.quantityPerDealer.message}
-                </span>
-              )}
-            </div>
-            {/* Dealer Margin % */}
-            <div className="space-y-2">
-              <Label htmlFor="dealerMargin" className="text-sm font-medium">
-                Dealer Margin %
-              </Label>
-              <Input
-                id="dealerMargin"
-                placeholder="Enter Margin"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("dealerMargin")}
-              />
-              {errors.dealerMargin && (
-                <span className="text-red-500 text-sm">
-                  {errors.dealerMargin.message}
-                </span>
-              )}
-            </div>
-            {/* Dealer Priority Override */}
-            <div className="space-y-2">
-              <Label
-                htmlFor="dealerPriorityOverride"
-                className="text-sm font-medium"
-              >
-                Dealer Priority Override
-              </Label>
-              <Input
-                id="dealerPriorityOverride"
-                placeholder="Enter Override"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("dealerPriorityOverride")}
-              />
-              {errors.dealerPriorityOverride && (
-                <span className="text-red-500 text-sm">
-                  {errors.dealerPriorityOverride.message}
-                </span>
-              )}
-            </div>
-            {/* Stock Expiry Rule */}
-            <div className="space-y-2">
-              <Label htmlFor="stockExpiryRule" className="text-sm font-medium">
-                Stock Expiry Rule
-              </Label>
-              <Input
-                id="stockExpiryRule"
-                placeholder="Enter Rule"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("stockExpiryRule")}
-              />
-              {errors.stockExpiryRule && (
-                <span className="text-red-500 text-sm">
-                  {errors.stockExpiryRule.message}
-                </span>
-              )}
-            </div>
-            {/* Last Stock Update */}
-            <div className="space-y-2">
-              <Label htmlFor="lastStockUpdate" className="text-sm font-medium">
-                Last Stock Update
-              </Label>
-              <Input
-                id="lastStockUpdate"
-                placeholder="Enter Update"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("lastStockUpdate")}
-              />
-              {errors.lastStockUpdate && (
-                <span className="text-red-500 text-sm">
-                  {errors.lastStockUpdate.message}
-                </span>
-              )}
-            </div>
-            {/* Last Inquired At */}
-            <div className="space-y-2">
-              <Label htmlFor="LastinquiredAt" className="text-sm font-medium">
-                Last Inquired At
-              </Label>
-              <Input
-                id="LastinquiredAt"
-                placeholder="Enter Last Inquired At"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("LastinquiredAt")}
-              />
-              {errors.LastinquiredAt && (
-                <span className="text-red-500 text-sm">
-                  {errors.LastinquiredAt.message}
-                </span>
-              )}
-            </div>
-            {/* Admin Notes */}
-            <div className="space-y-2">
-              <Label htmlFor="admin_notes" className="text-sm font-medium">
-                Admin Notes
-              </Label>
-              <Input
-                id="admin_notes"
-                placeholder="Enter Admin Notes"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("admin_notes")}
-              />
-              {errors.admin_notes && (
-                <span className="text-red-500 text-sm">
-                  {errors.admin_notes.message}
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        {/* SEO & Search Optimization */}
-        <Card className="border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-red-600 font-semibold text-lg">
-              SEO & Search Optimization
-            </CardTitle>
-            <p className="text-sm text-gray-500">
-              Optimize product visibility and search performance.
-            </p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* SEO Title */}
-            <div className="space-y-2">
-              <Label htmlFor="seo_title" className="text-sm font-medium">
-                SEO Title
-              </Label>
-              <Input
-                id="seo_title"
-                placeholder="Enter SEO Title"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("seo_title")}
-              />
-              {errors.seo_title && (
-                <span className="text-red-500 text-sm">
-                  {errors.seo_title.message}
-                </span>
-              )}
-            </div>
-
-            {/* Search Tags Array (Chips) */}
-            <div className="space-y-2">
-              <Label htmlFor="searchTagsArray" className="text-sm font-medium">
-                Search Tags
-              </Label>
-              <TagsInput
-                value={
-                  Array.isArray(watch("search_tags"))
-                    ? watch("search_tags")
-                    : []
-                }
-                onChange={(tags: string[]) => setValue("search_tags", tags)}
-                name="search_tags"
-                placeHolder="Add tag and press enter"
-              />
-              {errors.search_tags && (
-                <span className="text-red-500 text-sm">
-                  {errors.search_tags.message}
-                </span>
-              )}
-            </div>
-            {/* SEO Description */}
-            <div className="space-y-2 col-span-full">
-              <Label htmlFor="seoDescription" className="text-sm font-medium">
-                SEO Description
-              </Label>
-              <Input
-                id="seo_description"
-                placeholder="Enter SEO Description"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("seo_description")}
-              />
-              {errors.seo_description && (
-                <span className="text-red-500 text-sm">
-                  {errors.seo_description.message}
                 </span>
               )}
             </div>

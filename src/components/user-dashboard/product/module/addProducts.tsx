@@ -33,6 +33,7 @@ import {
   getvarientByModel,
   getYearRange,
 } from "@/service/product-Service";
+import { getAllDealers } from "@/service/dealerServices";
 import { useEffect, useState } from "react";
 import { useAppSelector } from "@/store/hooks";
 // Helper to decode JWT and extract user id
@@ -129,7 +130,8 @@ export default function AddProducts() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const allowedRoles = ["Super-admin", "Inventory-admin"];
+  const [dealerOptions, setDealerOptions] = useState<any[]>([]);
+  const allowedRoles = ["Super-admin", "Inventory-Admin", "Inventory-Staff"];
 
 
 
@@ -151,26 +153,59 @@ export default function AddProducts() {
     },
   });
 
-  // Parallel fetch for categories, subcategories, types, and year ranges
+  // Parallel fetch for categories, subcategories, types, year ranges, and dealers
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [categories, subCategories, types, yearRanges] =
+        // console.log("Starting to fetch initial data...");
+        const [categories, subCategories, types, yearRanges, dealers] =
           await Promise.all([
             getCategories(),
             getSubCategories(),
             getTypes(),
             getYearRange(),
+            getAllDealers(),
           ]);
-        setCategoryOptions(categories.data.map((category: any) => category));
-        setSubCategoryOptions(
-          subCategories.data.map((category: any) => category)
-        );
-        setTypeOptions(types.data.map((type: any) => type));
-        setYearRangeOptions(yearRanges.data.map((year: any) => year));
-        console.log("Fetched all initial data in parallel");
+        
+        // console.log("Raw API responses:", {
+        //   categories,
+        //   subCategories,
+        //   types,
+        //   yearRanges,
+        //   dealers
+        // });
+
+        // Check if the response structure is correct and handle different structures
+        const categoryData = categories?.data || categories || [];
+        const subCategoryData = subCategories?.data?.products || subCategories?.data || subCategories || [];
+        const typeData = types?.data?.products || types?.data || types || [];
+        const yearRangeData = yearRanges?.data?.products || yearRanges?.data || yearRanges || [];
+        const dealerData = dealers?.data || dealers || [];
+
+        // console.log("Processed data:", {
+        //   categoryData,
+        //   subCategoryData,
+        //   typeData,
+        //   yearRangeData,
+        //   dealerData
+        // });
+
+        setCategoryOptions(Array.isArray(categoryData) ? categoryData : []);
+        setSubCategoryOptions(Array.isArray(subCategoryData) ? subCategoryData : []);
+        setTypeOptions(Array.isArray(typeData) ? typeData : []);
+        setYearRangeOptions(Array.isArray(yearRangeData) ? yearRangeData : []);
+        setDealerOptions(Array.isArray(dealerData) ? dealerData : []);
+        
+        console.log("Successfully fetched and set all initial data");
       } catch (error) {
         console.error("Failed to fetch initial data in parallel:", error);
+        // Set empty arrays as fallback
+        setCategoryOptions([]);
+        setSubCategoryOptions([]);
+        setTypeOptions([]);
+        setYearRangeOptions([]);
+        setDealerOptions([]);
+        showToast("Failed to load initial data. Please refresh the page.", "error");
       }
     };
     fetchInitialData();
@@ -184,11 +219,19 @@ export default function AddProducts() {
     }
     const fetchBrandsByType = async () => {
       try {
+        console.log("Fetching brands for type ID:", selectedProductTypeId);
         const response = await getBrandByType(selectedProductTypeId);
-        setFilteredBrandOptions(response.data.map((brand: any) => brand));
+        console.log("Brands response:", response);
+        
+        // Handle different response structures
+        const brandData = response?.data?.products || response?.data || response || [];
+        console.log("Processed brand data:", brandData);
+        
+        setFilteredBrandOptions(Array.isArray(brandData) ? brandData : []);
       } catch (error) {
-        setFilteredBrandOptions([]);
         console.error("Failed to fetch brands by type:", error);
+        setFilteredBrandOptions([]);
+        showToast("Failed to load brands for selected type", "error");
       }
     };
     fetchBrandsByType();
@@ -202,10 +245,19 @@ export default function AddProducts() {
     }
     const fetchModelsByBrand = async () => {
       try {
+        console.log("Fetching models for brand ID:", selectedbrandId);
         const response = await getModelByBrand(selectedbrandId);
-        setModelOptions(response.data.map((model: any) => model));
+        console.log("Models response:", response);
+        
+        // Handle different response structures
+        const modelData = response?.data?.products || response?.data || response || [];
+        console.log("Processed model data:", modelData);
+        
+        setModelOptions(Array.isArray(modelData) ? modelData : []);
       } catch (error) {
         console.error("Failed to fetch models by brand:", error);
+        setModelOptions([]);
+        showToast("Failed to load models for selected brand", "error");
       }
     };
     fetchModelsByBrand();
@@ -219,11 +271,19 @@ export default function AddProducts() {
     }
     const fetchVarientByModel = async () => {
       try {
+        console.log("Fetching variants for model ID:", modelId);
         const response = await getvarientByModel(modelId);
-        setVarientOptions(response.data.map((varient: any) => varient));
-        console.log("Varient Options:", response.data);
+        console.log("Variants response:", response);
+        
+        // Handle different response structures
+        const variantData = response?.data?.products || response?.data || response || [];
+        console.log("Processed variant data:", variantData);
+        
+        setVarientOptions(Array.isArray(variantData) ? variantData : []);
       } catch (error) {
-        console.error("Failed to fetch varient options:", error);
+        console.error("Failed to fetch variant options:", error);
+        setVarientOptions([]);
+        showToast("Failed to load variants for selected model", "error");
       }
     };
     fetchVarientByModel();
@@ -1216,12 +1276,29 @@ export default function AddProducts() {
               <Label htmlFor="availableDealers" className="text-base font-medium font-sans">
                 Available Dealers
               </Label>
-              <Input
-                id="availableDealers"
-                placeholder="Enter Available Dealers"
-                className="bg-gray-50 border-gray-200 rounded-[8px] p-4"
-                {...register("availableDealers")}
-              />
+              <Select
+                onValueChange={(value) => setValue("availableDealers", value)}
+              >
+                <SelectTrigger
+                  id="availableDealers"
+                  className="bg-gray-50 border-gray-200 rounded-[8px] p-4 w-full"
+                >
+                  <SelectValue placeholder="Select Dealer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dealerOptions.length === 0 ? (
+                    <SelectItem value="loading" disabled>
+                      Loading...
+                    </SelectItem>
+                  ) : (
+                    dealerOptions.map((dealer) => (
+                      <SelectItem key={dealer._id} value={dealer._id}>
+                        {dealer.legal_name || dealer.dealerName || dealer.firstName + ' ' + dealer.lastName || dealer._id}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
               {errors.availableDealers && (
                 <span className="text-red-500 text-sm">
                   {errors.availableDealers.message}

@@ -44,10 +44,6 @@ export type Employee = {
   auditTrail?: string
 }
 
-/**
- * Generic API response structure.
- * T will be the type of the 'data' payload (e.g., Employee, Employee[], string).
- */
 export type ApiResponse<T> = {
   success?: boolean
   message: string
@@ -56,3 +52,23 @@ export type ApiResponse<T> = {
   employee?: Employee
   data?: T
 }
+
+export type RevokeRoleResponse = {
+  success: boolean;
+  message: string;
+  data: {
+    ticketsAssigned: any[];
+    cartId: string | null;
+    fcmToken: string | null;
+    wishlistId: string | null;
+    _id: string;
+    email: string;
+    phone_Number: string;
+    role: string;
+    address: any[];
+    __v: number;
+    last_login: string;
+    vehicle_details: any[];
+  };
+}
+

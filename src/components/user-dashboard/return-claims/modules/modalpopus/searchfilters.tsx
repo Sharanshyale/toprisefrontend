@@ -20,7 +20,7 @@ export default function SearchFiltersModal({ trigger }: SearchFiltersModalProps)
   const [category, setCategory] = useState("Brake Pad")
   const [isOpen, setIsOpen] = useState(false)
 
-  const returnStatusOptions = ["Pending", "Approved", "Rejected", "Completed"]
+  const returnStatusOptions = ["Pending", "Approved", "Rejected", "In_Progress", "Pickup_Scheduled", "Pickup_Completed", "Completed"]
   const claimTypeOptions = ["Defective", "Wrong Item", "Not Compatible", "Others"]
 
   const handleSearch = () => {

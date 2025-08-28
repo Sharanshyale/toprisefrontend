@@ -3,20 +3,6 @@ import { useState, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast as useGlobalToast } from "@/components/ui/toast";
-import { useAppSelector, useAppDispatch } from "@/store/hooks";
-import {
-  fetchContentSuccess,
-  fetchContentRequest,
-  fetchContentFailure,
-} from "@/store/slice/content/contentSlice";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import ShowCategory from "./TabComponent/showCategory";
 import SubCategory from "./TabComponent/showSubCategory";
 import ShowModel from "./TabComponent/showModel";
@@ -30,6 +16,8 @@ import ShowVariant from "./TabComponent/showVarient";
 import CreateVarient from "./TabComponent/handelTabForm/createVarient";
 import SearchInput from "@/components/common/search/SearchInput";
 import useDebounce from "@/utils/useDebounce";
+import ContentMangementBulk from "./uploadbulkpopup/contentMangementBulk";
+import Image from "next/image";
 
 // Tab types
 type TabType = "Model" | "Brand" | "Variant" | "Category" | "Subcategory";
@@ -60,6 +48,8 @@ export default function ShowContent() {
   const [openModel, setOpenModel] = useState(false);
   const [openBrand, setOpenBrand] = useState(false);
   const [openVariant, setOpenVariant] = useState(false);
+  const [openBulkUpload, setOpenBulkUpload] = useState(false);
+  const [uploadBulkLoading, setUploadBulkLoading] = useState(false);
   const { showToast } = useGlobalToast();
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -108,6 +98,28 @@ export default function ShowContent() {
   }, []);
   const handleVariantAction = useCallback(() => {
     setOpenVariant(true);
+  }, []);
+
+  const handleUploadBulk = useCallback(() => {
+    setOpenBulkUpload(true);
+  }, []);
+
+  // Get content type for bulk upload based on active tab
+  const getContentTypeForBulkUpload = useCallback((tabType: TabType) => {
+    switch (tabType) {
+      case 'Category':
+        return 'Category';
+      case 'Subcategory':
+        return 'Subcategory';
+      case 'Brand':
+        return 'Brand';
+      case 'Model':
+        return 'Model';
+      case 'Variant':
+        return 'Variant';
+      default:
+        return 'Product';
+    }
   }, []);
 
   // Scalable tab configuration - easy to extend
@@ -195,13 +207,28 @@ export default function ShowContent() {
 
             />
             </div>
-            {/* Dynamic button that changes based on active tab */}
-            <DynamicButton
-              text={currentTabConfig.buttonConfig.text}
-              onClick={currentTabConfig.buttonConfig.action}
-              className="bg-[#C72920] text-white hover:bg-[#C72920]/90"
-              disabled={currentTabConfig.buttonConfig.disabled}
-            />
+            <div className="flex gap-3">
+              {/* Dynamic button that changes based on active tab */}
+              <DynamicButton
+                text={currentTabConfig.buttonConfig.text}
+                onClick={currentTabConfig.buttonConfig.action}
+                className="bg-[#C72920] text-white hover:bg-[#C72920]/90"
+                disabled={currentTabConfig.buttonConfig.disabled}
+              />
+                             {/* Bulk Upload Button */}
+               <DynamicButton
+                 variant="default"
+                 customClassName="flex items-center text-[#408EFD] border-[#408EFD] gap-3 bg-[#408EFD1A] border-[#408EFD] hover:bg-[#408ffd3a] rounded-[8px] px-4 py-2 min-w-[120px] justify-center font-[Poppins]"
+                 onClick={handleUploadBulk}
+                 disabled={uploadBulkLoading}
+                 loading={uploadBulkLoading}
+                 loadingText={`Uploading ${activeTab}...`}
+                 icon={
+                   <Image src="/assets/uploadFile.svg" alt="Upload" width={16} height={16} className="h-4 w-4" />
+                 }
+                 text={`Upload ${activeTab}`}
+               />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -242,6 +269,12 @@ export default function ShowContent() {
       <CreateModelForm open={openModel} onClose={() => setOpenModel(false)} />
       <CreateBrand open={openBrand} onClose={() => setOpenBrand(false)} />
       <CreateVarient open={openVariant} onClose={() => setOpenVariant(false)} />
+      <ContentMangementBulk
+        isOpen={openBulkUpload}
+        onClose={() => setOpenBulkUpload(false)}
+        mode="upload"
+        contentType={getContentTypeForBulkUpload(activeTab)}
+      />
     </div>
   );
 }

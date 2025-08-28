@@ -41,8 +41,6 @@ export const getProductsByDealerId = async (dealerId?: string): Promise<Product[
     throw error;
   }
 };
-
-
 //  check permission for dealer to access product
 
 export const checkDealerProductPermission = async (dealerId: string): Promise<PermissionCheckResponse> => {
@@ -56,6 +54,72 @@ export const checkDealerProductPermission = async (dealerId: string): Promise<Pe
     return response.data;
   } catch (error) {
     console.error("Error checking dealer product permission:", error);
+    throw error;
+  }
+};
+
+/**
+ * Update stock for a product by dealer
+ * @param productId - Product ID (path param)
+ * @param dealerId - Dealer ID (in body)
+ * @param quantity - New quantity (in body)
+ */
+export const updateStockByDealer = async (
+  productId: string,
+  dealerId: string,
+  quantity: number
+) => {
+  try {
+    // Use 'dealerId' as the field name in the request body
+    const response = await apiClient.put(`/category/products/v1/update-stockByDealer/${productId}`, {
+      dealerId,
+      quantity,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating stock by dealer:', error);
+    throw error;
+  }
+};
+
+/**
+ * Bulk upload products by dealer
+ * @param formData - FormData containing dataFile, imageZip, and dealerId
+ */
+export const bulkUploadByDealer = async (formData: FormData) => {
+  try {
+    // Get dealer ID from token if not already in formData
+    if (!formData.get('dealerId')) {
+      const token = getAuthToken();
+      if (token) {
+        try {
+          const payloadBase64 = token.split(".")[1];
+          if (payloadBase64) {
+            const base64 = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+            const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+            const payloadJson = atob(paddedBase64);
+            const payload = JSON.parse(payloadJson);
+            const dealerId = payload.dealerId || payload.id;
+            if (dealerId) {
+              formData.append('dealerId', dealerId);
+            }
+          }
+        } catch (err) {
+          throw new Error("Failed to extract dealer ID from token");
+        }
+      } else {
+        throw new Error("No authentication token found");
+      }
+    }
+
+    const response = await apiClient.post(
+      `${API_PRODUCTS_BASE_URL}/bulk-upload/byDealer`,
+      formData
+    );
+    
+    return response.data;
+  } catch (error: any) {
+    console.error('Error in bulk upload by dealer:', error);
     throw error;
   }
 };

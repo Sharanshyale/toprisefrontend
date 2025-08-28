@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Eye } from "lucide-react";
 import { getProductById, getProducts } from "@/service/product-Service";
 import { useParams, useRouter } from "next/navigation";
 import { Product } from "@/types/product-Types";
@@ -10,6 +10,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchProductByIdSuccess, fetchProductByIdRequest, fetchProductByIdFailure } from "@/store/slice/product/productByIdSlice";
 import { Productcard } from "@/components/dealer-dashboard/productCard";
 import DynamicButton from "@/components/common/button/button";
+import DealersModal from "../DealersModal";
 
 export default function DealerProdutView() {
   const [status, setStatus] = React.useState<string>("Created");
@@ -19,6 +20,7 @@ export default function DealerProdutView() {
   const id = useParams<{ id: string }>();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const [showDealersModal, setShowDealersModal] = React.useState(false);
 
 
   const getStatusColor = (currentStatus: string) => {
@@ -63,7 +65,7 @@ export default function DealerProdutView() {
           data !== null &&
           !Array.isArray(data)
         ) {
-          prod = data as Product;
+          prod = data as Product ;
         }
         setProduct(prod);
         dispatch(fetchProductByIdSuccess(prod));
@@ -342,7 +344,9 @@ export default function DealerProdutView() {
                     },
                     {
                       label: "Last Stock Update",
-                      value: product.available_dealers?.last_stock_update || "-",
+                      value: product.available_dealers && Array.isArray(product.available_dealers) && product.available_dealers.length > 0 
+                        ? product.available_dealers[0]?.last_stock_update || "-"
+                        : "-",
                     },
                     {
                       label: "Last Inquired At",
@@ -354,9 +358,18 @@ export default function DealerProdutView() {
           >
             {product && product.available_dealers && Array.isArray(product.available_dealers) && product.available_dealers.length > 0 && (
               <div className="mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Available Dealers</h4>
-                <div className="space-y-2">
-                  {product.available_dealers.map((dealer: any, index: number) => (
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-gray-700">Available Dealers</h4>
+                  <DynamicButton
+                    variant="outline"
+                    customClassName="text-red-600 border-red-200 hover:bg-red-50 text-sm px-1 py-1"
+                    onClick={() => setShowDealersModal(true)}
+                    icon={<Eye className="w-4 h-4" />}
+                    text="View All"
+                  />
+                </div>
+                {/* <div className="space-y-2">
+                  {product.available_dealers.slice(0, 2).map((dealer: any, index: number) => (
                     <div key={index} className="bg-gray-50 p-3 rounded-md">
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
@@ -390,7 +403,12 @@ export default function DealerProdutView() {
                       </div>
                     </div>
                   ))}
-                </div>
+                  {product.available_dealers.length > 2 && (
+                    <div className="text-center text-sm text-gray-500 py-2">
+                      +{product.available_dealers.length - 2} more dealers
+                    </div>
+                  )}
+                </div> */}
               </div>
             )}
           </Productcard>
@@ -438,6 +456,13 @@ export default function DealerProdutView() {
           </div>
         </div>
       </div>
+
+      {/* Dealers Modal */}
+      <DealersModal
+        open={showDealersModal}
+        onClose={() => setShowDealersModal(false)}
+        product={product}
+      />
     </div>
   );
 }

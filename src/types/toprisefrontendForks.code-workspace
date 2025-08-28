@@ -5,6 +5,6 @@
         }
     ],
     "settings": {
-        "codium.codeCompletion.enable": false
+        "codium.codeCompletion.enable": true
     }
 }

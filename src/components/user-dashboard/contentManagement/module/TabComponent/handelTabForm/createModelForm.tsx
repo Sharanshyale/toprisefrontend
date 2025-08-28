@@ -245,10 +245,10 @@ export default function CreateModelForm({ open, onClose, onSuccess }: CreateMode
                     <SelectValue placeholder={brandLoading ? "Loading brands..." : "Select a brand"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {brandOptions.length > 0 ? (
+                    {brandOptions && Array.isArray(brandOptions) && brandOptions.length > 0 ? (
                       brandOptions.map((option: any) => (
-                        <SelectItem key={option._id} value={option._id}>
-                          {option.brand_name}
+                        <SelectItem key={option?._id || Math.random()} value={option?._id || ""}>
+                          {option?.brand_name || "Unknown Brand"}
                         </SelectItem>
                       ))
                     ) : (

@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Search,
   Filter,
   ChevronDown,
+  ChevronUp,
   Edit,
   Eye,
   MoreHorizontal,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+// Replaced shadcn Button with shared DynamicButton where used
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -43,6 +46,7 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import SearchInput from "@/components/common/search/SearchInput";
+import OrdersFilters from "@/components/user-dashboard/order-management/OrdersFilters";
 import DynamicButton from "@/components/common/button/button";
 import {
   Table,
@@ -53,7 +57,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
-import { getOrders } from "@/service/order-service";
+import { getOrders, updateOrderStatusByDealerReq, fetchPicklists } from "@/service/order-service";
+import AssignDealersModal from "@/components/user-dashboard/order-management/module/order-popus/AssignDealersModal";
+import CreatePicklist from "@/components/user-dashboard/order-management/module/OrderDetailCards/CreatePicklist";
 import { orderResponse } from "@/types/order-Types";
 import {
   fetchOrdersFailure,
@@ -74,8 +80,6 @@ interface Order {
   status: "Pending" | "Approved";
 }
 
-
-
 export default function OrdersTable() {
   const [orders, setOrders] = useState<any[]>([]);
   const { showToast } = GlobalToast();
@@ -89,28 +93,122 @@ export default function OrdersTable() {
   const ordersState = useAppSelector((state) => state.order.orders);
   const loading = useAppSelector((state: any) => state.order.loading);
   const error = useAppSelector((state: any) => state.order.error);
+  const auth = useAppSelector((state) => state.auth.user);
+  const isAuthorized = ["Super-admin", "Fulfillment-Admin"].includes(auth?.role);
   const [orderDetails, setOrderDetails] = useState<any>(null);
   // Filtered orders must be declared before pagination logic
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const filteredOrders = searchQuery
-    ? ordersState.filter(
+  
+  // Action modal state
+  const [actionOpen, setActionOpen] = useState(false);
+  const [activeAction, setActiveAction] = useState<
+    "assignDealers" | "createPicklist" | "markPacked" | "viewPicklists" | null
+  >(null);
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [dealerId, setDealerId] = useState("");
+  const [staffId, setStaffId] = useState("");
+  const [totalWeightKg, setTotalWeightKg] = useState<number>(0);
+  const [assignmentsJson, setAssignmentsJson] = useState("[]");
+  const [skuListJson, setSkuListJson] = useState("[]");
+  const [loadingAction, setLoadingAction] = useState(false);
+  const [picklistsData, setPicklistsData] = useState<any[]>([]);
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>("");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // Orders filters state
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterPayment, setFilterPayment] = useState("all");
+  const [filterOrderSource, setFilterOrderSource] = useState("all");
+  // Search + Sort combined
+  const filteredOrders = useMemo(() => {
+    let list = ordersState;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
         (order: any) =>
-          order.orderId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          order.customer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          order.number?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : ordersState;
+          order.orderId?.toLowerCase().includes(q) ||
+          order.customer?.toLowerCase().includes(q) ||
+          order.number?.toLowerCase().includes(q)
+      );
+    }
+    // Apply side-panel filters
+    if (filterStatus !== "all") {
+      const fs = filterStatus.toLowerCase();
+      list = list.filter((o: any) => String(o.status || "").toLowerCase() === fs);
+    }
+    if (filterPayment !== "all") {
+      const fp = filterPayment.toLowerCase();
+      list = list.filter((o: any) => String(o.payment || "").toLowerCase() === fp);
+    }
+    if (filterOrderSource !== "all") {
+      const fsr = filterOrderSource.toLowerCase();
+      list = list.filter((o: any) => String(o.orderSource || "").toLowerCase() === fsr);
+    }
+    if (sortField) {
+      list = [...list].sort((a: any, b: any) => {
+        let aValue: any;
+        let bValue: any;
+        switch (sortField) {
+          case "orderId":
+            aValue = a.orderId?.toLowerCase() || "";
+            bValue = b.orderId?.toLowerCase() || "";
+            break;
+          case "date":
+            aValue = new Date(a.orderDate).getTime();
+            bValue = new Date(b.orderDate).getTime();
+            break;
+          case "customer":
+            aValue = a.customer?.toLowerCase() || "";
+            bValue = b.customer?.toLowerCase() || "";
+            break;
+          case "number":
+            aValue = a.number?.toLowerCase() || "";
+            bValue = b.number?.toLowerCase() || "";
+            break;
+          case "payment":
+            aValue = a.payment?.toLowerCase() || "";
+            bValue = b.payment?.toLowerCase() || "";
+            break;
+          case "value":
+            aValue = parseFloat(String(a.value).replace(/[^0-9.-]+/g, "")) || 0;
+            bValue = parseFloat(String(b.value).replace(/[^0-9.-]+/g, "")) || 0;
+            break;
+          case "skus":
+            aValue = Array.isArray(a.skus) ? a.skus.length : 1;
+            bValue = Array.isArray(b.skus) ? b.skus.length : 1;
+            break;
+          case "dealers":
+            aValue = a.dealers || 0;
+            bValue = b.dealers || 0;
+            break;
+          case "status":
+            aValue = a.status?.toLowerCase() || "";
+            bValue = b.status?.toLowerCase() || "";
+            break;
+          default:
+            return 0;
+        }
+        if (typeof aValue === "string" && typeof bValue === "string") {
+          return sortDirection === "asc" ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+        }
+        return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+      });
+    }
+    return list;
+  }, [ordersState, searchQuery, filterStatus, filterPayment, filterOrderSource, sortField, sortDirection]);
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
   const paginatedData = filteredOrders.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-console.log( "paginatedData", paginatedData);
+  console.log("paginatedData", paginatedData);
 
-    const handleViewOrder = (id: string) => {
+  const handleViewOrder = (id: string) => {
     setOrderDetails(id);
     route.push(`/user/dashboard/order/orderdetails/${id}`);
     // Clear loading state after navigation (simulated delay)
@@ -143,7 +241,7 @@ console.log( "paginatedData", paginatedData);
           skusCount: order.skus?.length || 0,
           dealers: order.dealerMapping?.length || 0,
           dealerMapping: order.dealerMapping || [],
-          status: order.status === "Confirmed" ? "Approved" : "Pending",
+          status: order.status,
           deliveryCharges: order.deliveryCharges,
           GST: order.GST,
           orderType: order.orderType,
@@ -193,15 +291,64 @@ console.log( "paginatedData", paginatedData);
     setCurrentPage(1);
   };
 
-  const getStatusBadge = (status: "Pending" | "Approved") => {
+  const refreshOrders = useCallback(async () => {
+    try {
+      dispatch(fetchOrdersRequest());
+      const response = await getOrders();
+      const mappedOrders = response.data.map((order: any) => ({
+        id: order._id,
+        orderId: order.orderId,
+        orderDate: new Date(order.orderDate).toLocaleDateString(),
+        customer: order.customerDetails?.name || "",
+        number: order.customerDetails?.phone || "",
+        payment: order.paymentType,
+        value: `₹${order.order_Amount}`,
+        skus:
+          order.skus?.map((sku: any) => ({
+            sku: sku.sku,
+            quantity: sku.quantity,
+            productId: sku.productId,
+            productName: sku.productName,
+            _id: sku._id,
+          })) || [],
+        skusCount: order.skus?.length || 0,
+        dealers: order.dealerMapping?.length || 0,
+        dealerMapping: order.dealerMapping || [],
+        status: order.status,
+        deliveryCharges: order.deliveryCharges,
+        GST: order.GST,
+        orderType: order.orderType,
+        orderSource: order.orderSource,
+        auditLogs: order.auditLogs || [],
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+      }));
+      dispatch(fetchOrdersSuccess(mappedOrders));
+    } catch (error) {
+      dispatch(fetchOrdersFailure(error as any));
+    }
+  }, [dispatch]);
+
+  const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 rounded text-xs font-medium";
-    if (status === "Pending") {
+    const s = (status || "").toLowerCase();
+    if (s === "pending" || s === "created") {
       return `${baseClasses} text-yellow-700 bg-yellow-100`;
     }
-    return `${baseClasses} text-green-700 bg-green-100`;
+    if (s === "approved" || s === "confirmed") {
+      return `${baseClasses} text-green-700 bg-green-100`;
+    }
+    if (s === "packed") {
+      return `${baseClasses} text-blue-700 bg-blue-100`;
+    }
+    if (s === "delivered" || s === "completed") {
+      return `${baseClasses} text-emerald-700 bg-emerald-100`;
+    }
+    if (s === "cancelled" || s === "canceled") {
+      return `${baseClasses} text-red-700 bg-red-100`;
+    }
+    return `${baseClasses} text-gray-700 bg-gray-100`;
   };
-
-  // Loading Skeleton Component
 
   return (
     <div className="w-full">
@@ -215,13 +362,6 @@ console.log( "paginatedData", paginatedData);
           {/* Search and Filters */}
           <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:justify-between lg:space-y-0 gap-4 w-full">
             <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:gap-3 w-full lg:w-auto">
-              {/* <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              placeholder="Search Spare parts"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-white border-gray-200 h-10"
-            /> */}
 
               <SearchInput
                 placeholder="Search Spare parts"
@@ -230,24 +370,18 @@ console.log( "paginatedData", paginatedData);
                 onClear={handleClearSearch}
                 isLoading={isSearching}
               />
-              <div className="flex gap-2 sm:gap-3">
-                <DynamicButton
-                  variant="outline"
-                  text="Filters"
-                  icon={<Filter className="h-4 w-4 mr-2" />}
-                />
-                {/* 
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full sm:w-32 h-10 bg-white border-gray-200">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Requests">Requests</SelectItem>
-                <SelectItem value="Orders">Orders</SelectItem>
-                <SelectItem value="Returns">Returns</SelectItem>
-              </SelectContent>
-            </Select> */}
-              </div>
+              <OrdersFilters
+                currentStatus={filterStatus}
+                onStatusChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}
+                currentPayment={filterPayment}
+                onPaymentChange={(v) => { setFilterPayment(v); setCurrentPage(1); }}
+                currentOrderType={"all"}
+                onOrderTypeChange={() => { /* no-op: order type removed */ }}
+                currentOrderSource={filterOrderSource}
+                onOrderSourceChange={(v) => { setFilterOrderSource(v); setCurrentPage(1); }}
+                onResetFilters={() => { setFilterStatus("all"); setFilterPayment("all"); setFilterOrderSource("all"); setCurrentPage(1); }}
+                orders={ordersState}
+              />
             </div>
           </div>
 
@@ -263,7 +397,7 @@ console.log( "paginatedData", paginatedData);
         </CardHeader>
         <CardContent className="p-0">
           <div className="hidden sm:block overflow-x-auto">
-            <Table className="min-w-full">
+            <Table className="min-w-full table-fixed">
               <TableHeader>
                 <TableRow className="border-b  border-[#E5E5E5] bg-gray-50/50">
                   <TableHead className="px-4 py-4 w-8 font-[Red Hat Display]">
@@ -274,36 +408,128 @@ console.log( "paginatedData", paginatedData);
                     />
                   </TableHead>
 
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Order ID
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "orderId" ? "orderId" : "orderId"));
+                      setSortDirection((prev) => (sortField === "orderId" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Order ID"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Order ID
+                      {sortField === "orderId" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Date
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "date" ? "date" : "date"));
+                      setSortDirection((prev) => (sortField === "date" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Date"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Date
+                      {sortField === "date" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Customer
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "customer" ? "customer" : "customer"));
+                      setSortDirection((prev) => (sortField === "customer" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Customer"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Customer
+                      {sortField === "customer" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Number
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "number" ? "number" : "number"));
+                      setSortDirection((prev) => (sortField === "number" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Number"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Number
+                      {sortField === "number" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Payment
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "payment" ? "payment" : "payment"));
+                      setSortDirection((prev) => (sortField === "payment" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Payment"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Payment
+                      {sortField === "payment" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Value
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "value" ? "value" : "value"));
+                      setSortDirection((prev) => (sortField === "value" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Value"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Value
+                      {sortField === "value" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    No.of Skus
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "skus" ? "skus" : "skus"));
+                      setSortDirection((prev) => (sortField === "skus" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by SKUs count"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      No.of Skus
+                      {sortField === "skus" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Dealer
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "dealers" ? "dealers" : "dealers"));
+                      setSortDirection((prev) => (sortField === "dealers" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Dealers"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Dealer
+                      {sortField === "dealers" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Staus
+                  <TableHead
+                    className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display] cursor-pointer select-none"
+                    onClick={() => {
+                      setSortField((prev) => (prev === "status" ? "status" : "status"));
+                      setSortDirection((prev) => (sortField === "status" ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                    }}
+                    title="Sort by Status"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Status
+                      {sortField === "status" && (sortDirection === "asc" ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3" />)}
+                    </span>
                   </TableHead>
-                  <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
-                    Actions
-                  </TableHead>
+                  {isAuthorized && (
+                    <TableHead className="b2 text-gray-700 font-medium px-6 py-4 text-left font-[Red Hat Display]">
+                      Actions
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -347,70 +573,70 @@ console.log( "paginatedData", paginatedData);
                       </TableRow>
                     ))
                   : paginatedData.map((order) => (
-                      <TableRow key={order.id}
-                      >
+                      <TableRow key={order.id}>
                         <TableCell className="px-4 py-4 w-8">
                           <Checkbox />
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-medium "
-                        onClick={() => handleViewOrder(order.id)}
+                        <TableCell
+                          className="px-6 py-4 font-medium max-w-[160px] truncate cursor-pointer"
+                          title={order.orderId}
+                          onClick={() => handleViewOrder(order.id)}
                         >
                           {order.orderId}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000] font-sans">
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] font-sans whitespace-nowrap">
                           {order.orderDate}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] max-w-[180px] truncate" title={order.customer}>
                           {order.customer}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] max-w-[160px] truncate" title={order.number}>
                           {order.number}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] max-w-[140px] truncate" title={order.payment}>
                           {order.payment}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] max-w-[120px] truncate" title={order.value}>
                           {order.value}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
-                          {Array.isArray(order.skus)
-                            ? order.skus.length
-                            : 1}
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] whitespace-nowrap">
+                          {Array.isArray(order.skus) ? order.skus.length : 1}
                         </TableCell>
-                        <TableCell className="px-6 py-4 font-semibold text-[#000000]">
+                        <TableCell className="px-6 py-4 font-semibold text-[#000000] whitespace-nowrap">
                           {order.dealers}
                         </TableCell>
-                        <TableCell className="px-6 py-4">
+                        <TableCell className="px-6 py-4 whitespace-nowrap">
                           <span className={getStatusBadge(order.status)}>
                             {order.status}
                           </span>
                         </TableCell>
-                        <TableCell className="px-6 py-4">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                        
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 px-4 rounded-lg border border-neutral-300 b3 text-base font-sans text-gray-900 flex items-center gap-1 shadow-sm hover:border-red-100 focus:ring-2 focus:ring-red-100"
+                        {isAuthorized && (
+                          <TableCell className="px-6 py-4">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <DynamicButton
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 hover:bg-gray-100"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                  <span className="sr-only">Open menu</span>
+                                </DynamicButton>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-48 rounded-lg shadow-lg border border-neutral-200 p-1 font-red-hat b3 text-base"
                               >
-                                {order.status === "Pending" ? "Edit" : "View"}
-                                <ChevronDown className="h-4 w-4 ml-1" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              className="w-40 rounded-lg shadow-lg border border-neutral-200 p-1 font-red-hat b3 text-base"
-                            >
-                              <DropdownMenuItem className="b3 text-base font-red-hat flex items-center gap-2 rounded hover:bg-neutral-100">
-                                <Edit className="h-4 w-4 mr-2" /> Packed
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="b3 text-base font-red-hat flex items-center gap-2 rounded hover:bg-neutral-100">
-                                <Eye className="h-4 w-4 mr-2" /> View
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                                <DropdownMenuItem 
+                                  className="b3 text-base font-red-hat flex items-center gap-2 rounded hover:bg-neutral-100" 
+                                  onClick={() => handleViewOrder(order.id)}
+                                >
+                                  <Eye className="h-4 w-4 mr-2" /> View
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
               </TableBody>
@@ -502,6 +728,90 @@ console.log( "paginatedData", paginatedData);
           </div>
         )}
       </Card>
+      {/* Action Modal */}
+      <Dialog
+        open={isAuthorized && actionOpen && (activeAction === "markPacked" || activeAction === "viewPicklists")}
+        onOpenChange={setActionOpen}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {activeAction === "markPacked" && "Mark Order as Packed"}
+              {activeAction === "viewPicklists" && "Picklists"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {activeAction === "markPacked" && (
+            <div className="space-y-3">
+              <div>
+                <Label>Order ID</Label>
+                <Input readOnly value={selectedOrder?.id || ""} />
+              </div>
+              <div>
+                <Label>Dealer ID</Label>
+                <Input value={dealerId} onChange={(e) => setDealerId(e.target.value)} />
+              </div>
+              <div>
+                <Label>Total Weight (kg)</Label>
+                <Input type="number" value={totalWeightKg} onChange={(e) => setTotalWeightKg(parseFloat(e.target.value) || 0)} />
+              </div>
+              <DynamicButton
+                onClick={async () => {
+                  try {
+                    setLoadingAction(true);
+                    await updateOrderStatusByDealerReq({ orderId: selectedOrder?.id, dealerId, total_weight_kg: totalWeightKg });
+                    showToast("Order marked as packed", "success");
+                    setActionOpen(false);
+                    await refreshOrders();
+                  } catch (e) {
+                    showToast("Failed to mark packed", "error");
+                  } finally {
+                    setLoadingAction(false);
+                  }
+                }}
+                disabled={loadingAction}
+              >
+                {loadingAction ? "Updating..." : "Mark Packed"}
+              </DynamicButton>
+            </div>
+          )}
+
+          {activeAction === "viewPicklists" && (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {picklistsData.length === 0 ? (
+                <p className="text-sm text-gray-600">No picklists found.</p>
+              ) : (
+                picklistsData.map((p: any) => (
+                  <div key={p._id} className="border rounded p-3 text-sm">
+                    <div className="font-medium mb-1">{p._id}</div>
+                    <div>Order: {p.linkedOrderId}</div>
+                    <div>Dealer: {p.dealerId}</div>
+                    <div>Scan: {p.scanStatus}</div>
+                    <div>Invoice: {p.invoiceGenerated ? "Yes" : "No"}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Separated modals */}
+      <AssignDealersModal
+        open={isAuthorized && actionOpen && activeAction === "assignDealers"}
+        onOpenChange={(open) => {
+          if (!open) { setActionOpen(false); setActiveAction(null) } else { setActionOpen(true) }
+        }}
+        orderId={selectedOrder?.id}
+      />
+      <CreatePicklist
+        open={isAuthorized && actionOpen && activeAction === "createPicklist"}
+        onClose={() => { setActionOpen(false); setActiveAction(null) }}
+        orderId={selectedOrder?.id || ""}
+        defaultDealerId={dealerId}
+        defaultSkuList={[]}
+      />
+      {/* Removed unused AssignPicklistModal */}
     </div>
   );
 }

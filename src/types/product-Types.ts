@@ -1,11 +1,24 @@
 export interface ProductResponse {
   success: boolean;
   message: string;
-  data: Product[];
+  data: {
+    products: Product[];
+    pagination: Pagination;
+  }
+}
+
+export interface AvailableDealers {
+  dealers_Ref?: string;
+  quantity_per_dealer?: number;
+  dealer_margin?: number;
+  aler_margin?: string;
+  dealer_priority_override?: string;
+  inStock?: boolean;
+  last_stock_update?: string;
 }
 
 export interface Product {
-  available_dealers: AvailableDealers;
+  available_dealers: AvailableDealers[];
   Qc_status: string;
   _id: string;
   sku_code: string;
@@ -52,10 +65,6 @@ export interface Product {
   rejection_state: any[];
   change_logs: any[];
   __v: number;
-}
-
-export interface AvailableDealers {
-  last_stock_update: string;
 }
 
 export interface Brand {
@@ -146,6 +155,14 @@ export interface VariantUpdate {
   change_logs: string;
   _id: string;
   updated_at: string;
+}
+export interface Pagination {
+  totalItems: number;
+  totalPages: number;
+  currentPage: number;
+  itemsPerPage: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
 }
 
 export type AddProductPayload = Omit<Product, '_id' | 'created_at' | 'updated_at' | 'Qc_status' | 'available_dealers' | 'brand' | 'category' | 'sub_category' | 'model' | 'year_range' | 'variant' | 'created_by' | 'iteration_number' | 'last_stock_inquired' | 'rejection_state' | 'change_logs' | '__v'>;

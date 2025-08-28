@@ -217,17 +217,17 @@ export default function CreateVariant({
                       placeholder={
                         loading
                           ? "Loading models..."
-                          : models.length === 0
+                          : (!models || !Array.isArray(models) || models.length === 0)
                           ? "No models available"
                           : "Select a model"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {models.length > 0
+                    {models && Array.isArray(models) && models.length > 0
                       ? models.map((option: Model) => (
-                          <SelectItem key={option._id} value={option._id}>
-                            {option.model_name}
+                          <SelectItem key={option?._id || Math.random()} value={option?._id || ""}>
+                            {option?.model_name || "Unknown Model"}
                           </SelectItem>
                         ))
                       : !loading && (
@@ -286,19 +286,19 @@ export default function CreateVariant({
                       placeholder={
                         loading
                           ? "Loading years..."
-                          : years.length === 0
+                          : (!years || !Array.isArray(years) || years.length === 0)
                           ? "No years available"
-                          : field.value.length > 0
+                          : (field.value && Array.isArray(field.value) && field.value.length > 0)
                           ? `${field.value.length} year(s) selected`
                           : "Select years"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {years.length > 0
+                    {years && Array.isArray(years) && years.length > 0
                       ? years.map((option: Year) => (
-                          <SelectItem key={option._id} value={option._id}>
-                            {option.year_name}
+                          <SelectItem key={option?._id || Math.random()} value={option?._id || ""}>
+                            {option?.year_name || "Unknown Year"}
                           </SelectItem>
                         ))
                       : !loading && (

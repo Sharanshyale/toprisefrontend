@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useMemo } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Plus, Loader2, Send } from 'lucide-react'
+import { Plus, Loader2, Send, ChevronUp, ChevronDown } from 'lucide-react'
 import { useToast } from "@/components/ui/toast"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -16,10 +16,15 @@ import SearchInput from "@/components/common/search/SearchInput"
 import DynamicButton from "@/components/common/button/button"
 import DataTable from "@/components/common/table/DataTable"
 import DynamicPagination from "@/components/common/pagination/DynamicPagination"
+import UpdateStockModal from "./modules/UpdateStockModal";
+import ProductFilters from "./ProductFilters"
+import ProductBulkupload from "./modules/productbulkupload/productBulkupload"
 
 // API and Types
-import { getProductsByDealerId, checkDealerProductPermission } from "@/service/dealer-product";
-import { Product, PermissionCheckResponse } from "@/types/dealer-productTypes";
+import { getProductsByDealerId, checkDealerProductPermission, updateStockByDealer } from "@/service/dealer-product";
+import { Product, PermissionCheckResponse, UpdateStockByDealerRequest } from "@/types/dealer-productTypes";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -186,11 +191,24 @@ export default function DealerAssignTable() {
   const [selectedTab, setSelectedTab] = useState("All")
   const [currentPage, setCurrentPage] = useState(1)
   const [addProductLoading, setAddProductLoading] = useState(false)
-  const [uploadBulkLoading, setUploadBulkLoading] = useState(false)
   const [sendApprovalLoading, setSendApprovalLoading] = useState(false)
   const [viewProductLoading, setViewProductLoading] = useState<string | null>(null)
   const [permission, setPermission] = useState<PermissionCheckResponse | null>(null);
   const [loadingPermission, setLoadingPermission] = useState(true);
+  const [showUpdateStockModal, setShowUpdateStockModal] = useState(false);
+  const [updateStockProduct, setUpdateStockProduct] = useState<Product | null>(null);
+  const [updateStockLoading, setUpdateStockLoading] = useState(false);
+  const [updateStockQuantity, setUpdateStockQuantity] = useState<number>(0);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  
+  // Filter state
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [filterBrand, setFilterBrand] = useState("all");
+  
+  // Sorting state
+  const [sortField, setSortField] = useState("");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const cardsPerPage = 10
 
@@ -199,7 +217,10 @@ export default function DealerAssignTable() {
   const canEditProduct = permission?.data?.userPermissions?.update || false;
   const canViewProduct = permission?.data?.userPermissions?.read || false;
   const canDeleteProduct = permission?.data?.userPermissions?.delete || false;
-  const hasAnyPermission = canAddProduct || canEditProduct || canViewProduct || canDeleteProduct;
+  const canUpdateStock = permission?.data?.userPermissions?.update || false; // Allow stock updates if user can edit
+  const hasAnyPermission = canAddProduct || canEditProduct || canViewProduct || canDeleteProduct || canUpdateStock;
+
+
 
   // Debounced search functionality
   const performSearch = useCallback(
@@ -224,6 +245,14 @@ export default function DealerAssignTable() {
     setSearchInput("")
     setSearchQuery("")
     setIsSearching(false)
+    setCurrentPage(1)
+  }
+
+  // Reset all filters
+  const handleResetFilters = () => {
+    setFilterStatus("all")
+    setFilterCategory("all")
+    setFilterBrand("all")
     setCurrentPage(1)
   }
 
@@ -296,6 +325,21 @@ export default function DealerAssignTable() {
       currentProducts = currentProducts.filter((product) => product.live_status === "Rejected")
     }
 
+    // Filter by status
+    if (filterStatus !== "all") {
+      currentProducts = currentProducts.filter((product) => product.live_status === filterStatus)
+    }
+
+    // Filter by category
+    if (filterCategory !== "all") {
+      currentProducts = currentProducts.filter((product) => product.category?.category_name === filterCategory)
+    }
+
+    // Filter by brand
+    if (filterBrand !== "all") {
+      currentProducts = currentProducts.filter((product) => product.brand?.brand_name === filterBrand)
+    }
+
     // Filter by search query
     if (searchQuery.trim() !== "") {
       const q = searchQuery.trim().toLowerCase()
@@ -308,14 +352,79 @@ export default function DealerAssignTable() {
           product.product_type?.toLowerCase().includes(q),
       )
     }
+
+    // Sort products
+    if (sortField) {
+      currentProducts.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+        
+        switch (sortField) {
+          case "name":
+            aValue = a.product_name?.toLowerCase() || "";
+            bValue = b.product_name?.toLowerCase() || "";
+            break;
+          case "category":
+            aValue = a.category?.category_name?.toLowerCase() || "";
+            bValue = b.category?.category_name?.toLowerCase() || "";
+            break;
+          case "subCategory":
+            aValue = a.sub_category?.subcategory_name?.toLowerCase() || "";
+            bValue = b.sub_category?.subcategory_name?.toLowerCase() || "";
+            break;
+          case "brand":
+            aValue = a.brand?.brand_name?.toLowerCase() || "";
+            bValue = b.brand?.brand_name?.toLowerCase() || "";
+            break;
+          case "productType":
+            aValue = a.product_type?.toLowerCase() || "";
+            bValue = b.product_type?.toLowerCase() || "";
+            break;
+          case "status":
+            aValue = a.live_status?.toLowerCase() || "";
+            bValue = b.live_status?.toLowerCase() || "";
+            break;
+          case "quantity":
+            aValue = a.available_dealers?.[0]?.quantity_per_dealer || 0;
+            bValue = b.available_dealers?.[0]?.quantity_per_dealer || 0;
+            break;
+          default:
+            return 0;
+        }
+        
+        if (sortDirection === "asc") {
+          return aValue.localeCompare ? aValue.localeCompare(bValue) : aValue - bValue;
+        } else {
+          return bValue.localeCompare ? bValue.localeCompare(aValue) : bValue - aValue;
+        }
+      });
+    }
+    
     return currentProducts
-  }, [products, searchQuery, selectedTab])
+  }, [products, searchQuery, selectedTab, filterStatus, filterCategory, filterBrand, sortField, sortDirection])
 
   const totalPages = Math.ceil(filteredProducts.length / cardsPerPage)
   const paginatedData = filteredProducts.slice((currentPage - 1) * cardsPerPage, currentPage * cardsPerPage)
 
   // Add id property to each product for DataTable generic constraint
   const paginatedDataWithId = paginatedData.map((p) => ({ ...p, id: p._id as string }))
+
+  // Create actions array
+  const tableActions = [
+    ...(canViewProduct ? [{
+      label: "View Details",
+      onClick: (product: Product) => handleViewProduct(product._id),
+    }] : []),
+    ...(canEditProduct ? [{
+      label: "Edit",
+      onClick: (product: Product) => handleEditProduct(product._id),
+    }] : []),
+    // Always show Update Stocks action
+    {
+      label: "Update Stocks",
+      onClick: (product: Product) => handleUpdatedStocks(product._id),
+    },
+  ];
 
   // Selection state and handlers
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
@@ -363,10 +472,117 @@ export default function DealerAssignTable() {
     router.push(`/dealer/dashboard/product/productedit/${id}`)
   }
 
+  // Handler for Updated Stocks
+  const handleUpdatedStocks = (id: string) => {
+    const product = products.find((p) => p._id === id);
+    if (!product) {
+      showToast("Product not found.", "error");
+      return;
+    }
+    
+    // Find dealerId
+    let dealerId = undefined;
+    try {
+      const { getCookie, getAuthToken } = require("@/utils/auth");
+      dealerId = getCookie("dealerId");
+      if (!dealerId) {
+        const token = getAuthToken();
+        if (token) {
+          const payloadBase64 = token.split(".")[1];
+          if (payloadBase64) {
+            const base64 = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+            const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+            const payloadJson = atob(paddedBase64);
+            const payload = JSON.parse(payloadJson);
+            dealerId = payload.dealerId || payload.id;
+          }
+        }
+      }
+    } catch {}
+    
+    if (!dealerId) {
+      showToast("Dealer ID not found.", "error");
+      return;
+    }
+    
+    // Find dealer's stock for this product
+    const dealerStock = product.available_dealers?.find((d) => d.dealers_Ref === dealerId);
+    
+    setUpdateStockProduct(product);
+    setUpdateStockQuantity(dealerStock?.quantity_per_dealer || 0);
+    setShowUpdateStockModal(true);
+  };
+
+  const handleUpdateStockSubmit = async () => {
+    if (!updateStockProduct) {
+      showToast("No product selected for stock update.", "error");
+      return;
+    }
+    
+    if (updateStockQuantity < 0) {
+      showToast("Quantity cannot be negative.", "error");
+      return;
+    }
+    
+    setUpdateStockLoading(true);
+    let dealerId = undefined;
+    
+    try {
+      const { getCookie, getAuthToken } = require("@/utils/auth");
+      dealerId = getCookie("dealerId");
+      if (!dealerId) {
+        const token = getAuthToken();
+        if (token) {
+          const payloadBase64 = token.split(".")[1];
+          if (payloadBase64) {
+            const base64 = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+            const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+            const payloadJson = atob(paddedBase64);
+            const payload = JSON.parse(payloadJson);
+            dealerId = payload.dealerId || payload.id;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error getting dealerId:", error);
+    }
+    
+    if (!dealerId) {
+      showToast("Dealer ID not found. Please log in again.", "error");
+      setUpdateStockLoading(false);
+      return;
+    }
+    
+    try {
+      await updateStockByDealer(updateStockProduct._id, dealerId, updateStockQuantity);
+      showToast("Stock updated successfully!", "success");
+      
+      // Update local state
+      setProducts((prev) => prev.map((p) => {
+        if (p._id === updateStockProduct._id) {
+          return {
+            ...p,
+            available_dealers: p.available_dealers?.map((d) =>
+              d.dealers_Ref === dealerId ? { ...d, quantity_per_dealer: updateStockQuantity } : d
+            ) || [],
+          };
+        }
+        return p;
+      }));
+      
+      setShowUpdateStockModal(false);
+    } catch (error: any) {
+      console.error("Error updating stock:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to update stock.";
+      showToast(errorMessage, "error");
+    } finally {
+      setUpdateStockLoading(false);
+    }
+  };
+
   // Handlers for Bulk upload
   const handleUploadBulk = () => {
-    setUploadBulkLoading(true)
-    setTimeout(() => setUploadBulkLoading(false), 1000)
+    setShowBulkUploadModal(true)
   }
 
   // Handler for Send Approval
@@ -377,6 +593,25 @@ export default function DealerAssignTable() {
   //   //   // showToast("Approval sent successfully", "success")
   //   // }, 1000)
   // }
+
+  // Handle sorting
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ChevronUp className="w-4 h-4 text-gray-400" />;
+    }
+    return sortDirection === "asc" ? 
+      <ChevronUp className="w-4 h-4 text-[#C72920]" /> : 
+      <ChevronDown className="w-4 h-4 text-[#C72920]" />;
+  };
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -407,14 +642,19 @@ export default function DealerAssignTable() {
                 isLoading={isSearching}
                 placeholder="Search Spare parts"
               />
-              {/* Filter Buttons */}
-              <div className="flex gap-2 sm:gap-3">
-                <DynamicButton
-                  variant="outline"
-                  customClassName="bg-transparent border-gray-300 hover:bg-gray-50 min-w-[100px]"
-                  text="Filters"
-                />
-              </div>
+              {/* Product Filters */}
+              <ProductFilters
+                search={searchInput}
+                onSearchChange={handleSearchChange}
+                currentStatus={filterStatus}
+                onStatusChange={setFilterStatus}
+                currentCategory={filterCategory}
+                onCategoryChange={setFilterCategory}
+                currentBrand={filterBrand}
+                onBrandChange={setFilterBrand}
+                onResetFilters={handleResetFilters}
+                products={products}
+              />
             </div>
             {/* Right: Add Product, Send Approval */}
             <div className="flex items-center gap-3 w-full lg:w-auto justify-start grid-ro-2 sm:justify-end">
@@ -457,6 +697,7 @@ export default function DealerAssignTable() {
                   // onClick={handleSendApproval}
                 />
               )}
+
             </div>
           </div>
         </CardHeader>
@@ -471,116 +712,243 @@ export default function DealerAssignTable() {
             </div>
           )}
           {!loadingPermission && hasAnyPermission && (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto min-w-full">
               <DataTable<Product>
-              data={paginatedDataWithId}
-              loading={loadingProducts}
-              currentPage={currentPage}
-              itemsPerPage={cardsPerPage}
-              onPageChange={setCurrentPage}
-              selectedItems={selectedProducts}
-              onSelectItem={handleSelectOne}
-              onSelectAll={handleSelectAll}
-              allSelected={allSelected}
-              columns={[
-                {
-                  key: "image",
-                  header: "Image",
-                  render: (product: Product) => (
-                    <div className="w-12 h-10 sm:w-16 sm:h-12 lg:w-20 lg:h-16 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                data={paginatedDataWithId}
+                loading={loadingProducts}
+                currentPage={currentPage}
+                itemsPerPage={cardsPerPage}
+                onPageChange={setCurrentPage}
+                selectedItems={selectedProducts}
+                onSelectItem={handleSelectOne}
+                onSelectAll={handleSelectAll}
+                allSelected={allSelected}
+                columns={[
+                  {
+                    key: "image",
+                    header: "Image",
+                    className: "w-20",
+                    render: (product: Product) => (
+                      <div className="w-12 h-10 sm:w-16 sm:h-12 lg:w-20 lg:h-16 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                        <Image
+                          src={product.images?.[0] || "/placeholder.svg?height=64&width=80"}
+                          alt={product.product_name}
+                          width={80}
+                          height={64}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "name",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("name")}
+                      >
+                        Name
+                        {getSortIcon("name")}
+                      </div>
+                    ),
+                    className: "min-w-[180px] max-w-[220px]",
+                    render: (product: Product) => (
+                      <div 
+                        className={`${canViewProduct ? "cursor-pointer" : "cursor-default"}`}
+                        onClick={canViewProduct ? () => handleViewProduct(product._id) : undefined}
+                      >
+                        <div className="font-medium text-gray-900 text-sm font-sans truncate pr-2" title={product.product_name}>
+                          {product.product_name}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "categories",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("category")}
+                      >
+                        Categories
+                        {getSortIcon("category")}
+                      </div>
+                    ),
+                    className: "min-w-[120px] max-w-[140px]",
+                    render: (product: Product) => (
+                      <div className="truncate pr-2" title={product.category?.category_name || "N/A"}>
+                        <span className="text-sm">{product.category?.category_name || "N/A"}</span>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "subCategories",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("subCategory")}
+                      >
+                        Sub Categories
+                        {getSortIcon("subCategory")}
+                      </div>
+                    ),
+                    className: "min-w-[140px] max-w-[160px]",
+                    render: (product: Product) => (
+                      <div className="truncate pr-2" title={product.sub_category?.subcategory_name || "N/A"}>
+                        <span className="text-sm">{product.sub_category?.subcategory_name || "N/A"}</span>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "brand",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("brand")}
+                      >
+                        Brand
+                        {getSortIcon("brand")}
+                      </div>
+                    ),
+                    className: "min-w-[100px] max-w-[120px]",
+                    render: (product: Product) => (
+                      <div className="truncate pr-2" title={product.brand?.brand_name || "N/A"}>
+                        <span className="text-sm">{product.brand?.brand_name || "N/A"}</span>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "productType",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("productType")}
+                      >
+                        Product type
+                        {getSortIcon("productType")}
+                      </div>
+                    ),
+                    className: "min-w-[100px] max-w-[120px]",
+                    render: (product: Product) => (
+                      <div className="truncate pr-2" title={product.product_type || "N/A"}>
+                        <span className="text-sm">{product.product_type || "N/A"}</span>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "status",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("status")}
+                      >
+                        Status
+                        {getSortIcon("status")}
+                      </div>
+                    ),
+                    className: "min-w-[100px] max-w-[120px]",
+                    render: (product: Product) => getStatusBadge(product.live_status),
+                  },
+                  {
+                    key: "quantity_per_dealer",
+                    header: (
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-[#C72920] transition-colors"
+                        onClick={() => handleSort("quantity")}
+                      >
+                        Quantity
+                        {getSortIcon("quantity")}
+                      </div>
+                    ),
+                    className: "min-w-[80px] max-w-[100px]",
+                    render: (product: Product) => {
+                      // Find dealerId
+                      let dealerId = undefined;
+                      try {
+                        const { getCookie, getAuthToken } = require("@/utils/auth");
+                        dealerId = getCookie("dealerId");
+                        if (!dealerId) {
+                          const token = getAuthToken();
+                          if (token) {
+                            const payloadBase64 = token.split(".")[1];
+                            if (payloadBase64) {
+                              const base64 = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+                              const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+                              const payloadJson = atob(paddedBase64);
+                              const payload = JSON.parse(payloadJson);
+                              dealerId = payload.dealerId || payload.id;
+                            }
+                          }
+                        }
+                      } catch {}
+                      const dealerStock = product.available_dealers?.find((d) => d.dealers_Ref === dealerId);
+                      return (
+                        <div className="text-center font-medium">
+                          {dealerStock?.quantity_per_dealer ?? "-"}
+                        </div>
+                      );
+                    },
+                  },
+                ]}
+                actions={tableActions}
+                mobileCard={(product: Product) => (
+                  <div className="flex items-start space-x-4 p-4">
+                    <div className="w-16 h-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
                       <Image
                         src={product.images?.[0] || "/placeholder.svg?height=64&width=80"}
                         alt={product.product_name}
-                        width={80}
-                        height={64}
+                        width={64}
+                        height={48}
                         className="w-full h-full object-cover"
                       />
                     </div>
-                  ),
-                },
-                {
-                  key: "name",
-                  header: "Name",
-                  render: (product: Product) => (
-                    <div 
-                      className={canViewProduct ? "cursor-pointer" : "cursor-default"} 
-                      onClick={canViewProduct ? () => handleViewProduct(product._id) : undefined}
-                    >
-                      <div className="font-medium text-gray-900 b2 font-sans">{product.product_name}</div>
-                    </div>
-                  ),
-                },
-                {
-                  key: "categories",
-                  header: "Categories",
-                  render: (product: Product) => product.category?.category_name || "N/A",
-                },
-                {
-                  key: "subCategories",
-                  header: "Sub Categories",
-                  render: (product: Product) => product.sub_category?.subcategory_name || "N/A",
-                },
-                {
-                  key: "brand",
-                  header: "Brand",
-                  render: (product: Product) => product.brand?.brand_name || "N/A",
-                },
-                {
-                  key: "productType",
-                  header: "Product type",
-                  render: (product: Product) => product.product_type || "N/A",
-                },
-                {
-                  key: "status",
-                  header: "Status",
-                  render: (product: Product) => getStatusBadge(product.live_status),
-                },
-              ]}
-              actions={[
-                ...(canViewProduct ? [{
-                  label: "View Details",
-                  onClick: (product: Product) => handleViewProduct(product._id),
-                }] : []),
-                ...(canEditProduct ? [{
-                  label: "Edit",
-                  onClick: (product: Product) => handleEditProduct(product._id),
-                }] : []),
-              ]}
-              mobileCard={(product: Product) => (
-                <div className="flex items-start space-x-4">
-                  <div className="w-16 h-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-                    <Image
-                      src={product.images?.[0] || "/placeholder.svg?height=64&width=80"}
-                      alt={product.product_name}
-                      width={64}
-                      height={48}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 text-sm truncate">{product.product_name}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {product.category?.category_name} • {product.sub_category?.subcategory_name}
-                    </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-gray-500">{product.brand?.brand_name}</span>
-                      <span className="text-xs text-gray-500">{product.live_status}</span>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="font-medium text-gray-900 text-sm truncate pr-2" title={product.product_name}>
+                        {product.product_name}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate pr-2" title={`${product.category?.category_name} • ${product.sub_category?.subcategory_name}`}>
+                        {product.category?.category_name} • {product.sub_category?.subcategory_name}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500 truncate max-w-[120px] pr-1" title={product.brand?.brand_name}>
+                          {product.brand?.brand_name}
+                        </span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">{product.live_status}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 truncate pr-2" title={`Type: ${product.product_type || "N/A"}`}>
+                        Type: {product.product_type || "N/A"}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            />
-            <DynamicPagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              totalItems={filteredProducts.length}
-              itemsPerPage={cardsPerPage}
-            />
-          </div>
+                )} 
+              />
+              <DynamicPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                totalItems={filteredProducts.length}
+                itemsPerPage={cardsPerPage}
+              />
+            </div>
           )}
         </CardContent>
       </Card>
+      {/* Update Stock Modal */}
+      <UpdateStockModal
+        open={showUpdateStockModal}
+        onClose={() => setShowUpdateStockModal(false)}
+        onSubmit={handleUpdateStockSubmit}
+        loading={updateStockLoading}
+        product={updateStockProduct}
+        quantity={updateStockQuantity}
+        setQuantity={setUpdateStockQuantity}
+      />
+      <ProductBulkupload
+        isOpen={showBulkUploadModal}
+        onClose={() => setShowBulkUploadModal(false)}
+        mode="upload"
+      />
     </div>
   )
 }
+

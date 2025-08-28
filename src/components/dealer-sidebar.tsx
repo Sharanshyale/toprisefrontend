@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
    LogOutIcon as LogOut,
    LogOutIcon,
+   FileText,
 } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {LogOut as logoutAction } from "../store/slice/auth/authSlice"
@@ -64,6 +65,11 @@ const data = {
       title:"Profile",
       url: "/dealer/dashboard/profile",
       icon: HiOutlineUser,
+    },
+    {
+      title: "Audit Logs",
+      url: "/dealer/dashboard/audit-logs",
+      icon: FileText,
     }
    
   ],
