@@ -100,12 +100,12 @@ export default function DealerAddProducts() {
             getTypes(),
             getYearRange(),
           ]);
-        setCategoryOptions(categories.data.map((category: any) => category));
+        setCategoryOptions(categories.data?.map((category: any) => category) || []);
         setSubCategoryOptions(
-          subCategories.data.map((category: any) => category)
+          subCategories.data?.map((category: any) => category) || []
         );
-        setTypeOptions(types.data.map((type: any) => type));
-        setYearRangeOptions(yearRanges.data.map((year: any) => year));
+        setTypeOptions(types.data?.map((type: any) => type) || []);
+        setYearRangeOptions(yearRanges.data?.map((year: any) => year) || []);
         console.log("Fetched all initial data in parallel");
       } catch (error) {
         console.error("Failed to fetch initial data in parallel:", error);
@@ -123,7 +123,7 @@ export default function DealerAddProducts() {
     const fetchBrandsByType = async () => {
       try {
         const response = await getBrandByType(selectedProductTypeId);
-        setFilteredBrandOptions(response.data.map((brand: any) => brand));
+        setFilteredBrandOptions(response.data?.map((brand: any) => brand) || []);
       } catch (error) {
         setFilteredBrandOptions([]);
         console.error("Failed to fetch brands by type:", error);
@@ -141,7 +141,7 @@ export default function DealerAddProducts() {
     const fetchModelsByBrand = async () => {
       try {
         const response = await getModelByBrand(selectedbrandId);
-        setModelOptions(response.data.map((model: any) => model));
+        setModelOptions(response.data?.map((model: any) => model) || []);
       } catch (error) {
         console.error("Failed to fetch models by brand:", error);
       }
@@ -158,7 +158,7 @@ export default function DealerAddProducts() {
     const fetchVarientByModel = async () => {
       try {
         const response = await getvarientByModel(modelId);
-        setVarientOptions(response.data.map((varient: any) => varient));
+        setVarientOptions(response.data?.map((varient: any) => varient) || []);
         console.log("Varient Options:", response.data);
       } catch (error) {
         console.error("Failed to fetch varient options:", error);
